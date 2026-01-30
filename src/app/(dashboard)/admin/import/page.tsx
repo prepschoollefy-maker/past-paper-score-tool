@@ -192,7 +192,7 @@ export default function ImportPage() {
                     exam_session_id: string
                     subject: string
                     passing_min?: number
-                    passing_avg?: number
+                    passer_avg?: number
                     applicant_avg?: number
                 }[] = []
 
@@ -201,7 +201,7 @@ export default function ImportPage() {
                         exam_session_id: sessionId,
                         subject: '総合',
                         passing_min: row.officialData.passingMin,
-                        passing_avg: row.officialData.passingAvg,
+                        passer_avg: row.officialData.passingAvg,
                         applicant_avg: row.officialData.applicantAvg,
                     })
                 }
@@ -211,7 +211,7 @@ export default function ImportPage() {
                     officialRows.push({
                         exam_session_id: sessionId,
                         subject: sd.subject,
-                        passing_avg: sd.passingAvg,
+                        passer_avg: sd.passingAvg,
                         applicant_avg: sd.applicantAvg,
                     })
                 }
