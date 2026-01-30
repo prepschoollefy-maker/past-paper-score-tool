@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import type { School } from '@/types/database'
 import { TrendingUp, Target, Award, ChevronDown } from 'lucide-react'
 
@@ -12,9 +12,11 @@ interface ExamSessionWithData {
     session_label: string
     studentScore: number | null
     studentMaxScore: number | null
+    subjectScores: { subject: string; score: number; max_score: number }[]
     passingMin: number | null
     passingAvg: number | null
     applicantAvg: number | null
+    subjectOfficialData: { subject: string; passingMin: number | null; passingAvg: number | null }[]
 }
 
 export default function DashboardPage() {
@@ -22,7 +24,6 @@ export default function DashboardPage() {
     const [selectedSchoolId, setSelectedSchoolId] = useState<string>('')
     const [sessionLabels, setSessionLabels] = useState<string[]>([])
     const [selectedSessionLabel, setSelectedSessionLabel] = useState<string>('')
-    const [hasMultipleSessions, setHasMultipleSessions] = useState(false)
     const [examData, setExamData] = useState<ExamSessionWithData[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedSubject, setSelectedSubject] = useState<string>('総合')
@@ -48,7 +49,6 @@ export default function DashboardPage() {
         if (!selectedSchoolId) {
             setSessionLabels([])
             setSelectedSessionLabel('')
-            setHasMultipleSessions(false)
             setExamData([])
             return
         }
@@ -56,26 +56,17 @@ export default function DashboardPage() {
         async function fetchSessionLabels() {
             const { data } = await supabase
                 .from('exam_sessions')
-                .select('session_label, year')
+                .select('session_label')
                 .eq('school_id', selectedSchoolId)
 
             if (data) {
                 // ユニークな回ラベルを取得
-                const uniqueLabels = [...new Set(data.map(d => d.session_label))].filter(Boolean)
+                const uniqueLabels = [...new Set(data.map(d => d.session_label))].filter(Boolean).sort()
+                setSessionLabels(uniqueLabels)
 
-                // 同一年度に複数の回があるかチェック
-                const yearCounts = new Map<number, number>()
-                data.forEach(d => {
-                    yearCounts.set(d.year, (yearCounts.get(d.year) || 0) + 1)
-                })
-                const hasMultiple = Array.from(yearCounts.values()).some(count => count > 1)
-
-                setSessionLabels(uniqueLabels.sort())
-                setHasMultipleSessions(hasMultiple)
-
-                // 複数回がない場合は自動的に最初のラベルを選択（または空文字のまま進む）
-                if (!hasMultiple && uniqueLabels.length <= 1) {
-                    setSelectedSessionLabel(uniqueLabels[0] || '')
+                // 最初のラベルを自動選択
+                if (uniqueLabels.length > 0) {
+                    setSelectedSessionLabel(uniqueLabels[0])
                 } else {
                     setSelectedSessionLabel('')
                 }
@@ -85,15 +76,9 @@ export default function DashboardPage() {
         fetchSessionLabels()
     }, [selectedSchoolId])
 
-    // 回ラベル選択時（または自動選択時）にデータを取得
+    // 回ラベル選択時にデータを取得
     useEffect(() => {
         if (!selectedSchoolId) {
-            setExamData([])
-            return
-        }
-
-        // 複数回がある場合は回を選択するまで待つ
-        if (hasMultipleSessions && !selectedSessionLabel) {
             setExamData([])
             return
         }
@@ -101,7 +86,7 @@ export default function DashboardPage() {
         async function fetchExamData() {
             setLoading(true)
 
-            // 試験回を取得（回ラベルでフィルタリング）
+            // 試験回を取得
             let query = supabase
                 .from('exam_sessions')
                 .select('id, year, session_label, required_subjects(*)')
@@ -116,6 +101,7 @@ export default function DashboardPage() {
 
             if (!sessions || sessions.length === 0) {
                 setExamData([])
+                setAvailableSubjects(['総合'])
                 setLoading(false)
                 return
             }
@@ -131,13 +117,20 @@ export default function DashboardPage() {
             const examDataList: ExamSessionWithData[] = []
 
             for (const session of sessions) {
-                // 公式データを取得
-                const { data: officialData } = await supabase
+                // 公式データを全科目取得
+                const { data: officialDataList } = await supabase
                     .from('official_data')
                     .select('*')
                     .eq('exam_session_id', session.id)
-                    .eq('subject', '総合')
-                    .single()
+
+                const totalOfficial = officialDataList?.find(d => d.subject === '総合')
+                const subjectOfficialData = (officialDataList || [])
+                    .filter(d => d.subject !== '総合')
+                    .map(d => ({
+                        subject: d.subject,
+                        passingMin: d.passing_min,
+                        passingAvg: d.passer_avg,
+                    }))
 
                 // 生徒の演習記録を取得
                 const { data: records } = await supabase
@@ -147,12 +140,18 @@ export default function DashboardPage() {
 
                 let studentScore: number | null = null
                 let studentMaxScore: number | null = null
+                let subjectScores: { subject: string; score: number; max_score: number }[] = []
 
                 if (records && records.length > 0) {
                     const record = records[0]
                     const scores = record.practice_scores || []
                     studentScore = scores.reduce((sum: number, s: { score: number }) => sum + s.score, 0)
                     studentMaxScore = scores.reduce((sum: number, s: { max_score: number }) => sum + s.max_score, 0)
+                    subjectScores = scores.map((s: { subject: string; score: number; max_score: number }) => ({
+                        subject: s.subject,
+                        score: s.score,
+                        max_score: s.max_score,
+                    }))
                 }
 
                 examDataList.push({
@@ -161,9 +160,11 @@ export default function DashboardPage() {
                     session_label: session.session_label,
                     studentScore,
                     studentMaxScore,
-                    passingMin: officialData?.passing_min || null,
-                    passingAvg: officialData?.passer_avg || null,
-                    applicantAvg: officialData?.applicant_avg || null,
+                    subjectScores,
+                    passingMin: totalOfficial?.passing_min || null,
+                    passingAvg: totalOfficial?.passer_avg || null,
+                    applicantAvg: totalOfficial?.applicant_avg || null,
+                    subjectOfficialData,
                 })
             }
 
@@ -172,26 +173,37 @@ export default function DashboardPage() {
         }
 
         fetchExamData()
-    }, [selectedSchoolId, selectedSessionLabel, hasMultipleSessions])
+    }, [selectedSchoolId, selectedSessionLabel])
 
     // グラフ用データ
-    const chartData = examData.map(d => ({
-        year: `${d.year}年`,
-        生徒の得点: d.studentScore,
-        合格最低点: d.passingMin,
-        合格者平均: d.passingAvg,
-        受験者平均: d.applicantAvg,
-        満点: d.studentMaxScore,
-    }))
+    const chartData = examData.map(d => {
+        if (selectedSubject === '総合') {
+            return {
+                year: `${d.year}年`,
+                あなたの得点: d.studentScore,
+                合格最低点: d.passingMin,
+                合格者平均: d.passingAvg,
+            }
+        } else {
+            const subjectScore = d.subjectScores.find(s => s.subject === selectedSubject)
+            const subjectOfficial = d.subjectOfficialData.find(s => s.subject === selectedSubject)
+            return {
+                year: `${d.year}年`,
+                あなたの得点: subjectScore?.score || null,
+                合格最低点: subjectOfficial?.passingMin || null,
+                合格者平均: subjectOfficial?.passingAvg || null,
+            }
+        }
+    })
 
     // 最高点（Y軸の上限用）
     const maxScore = Math.max(
-        ...examData.map(d => Math.max(
-            d.studentScore || 0,
-            d.passingMin || 0,
-            d.passingAvg || 0,
-            d.studentMaxScore || 0
-        ))
+        ...chartData.map(d => Math.max(
+            (d.あなたの得点 as number) || 0,
+            (d.合格最低点 as number) || 0,
+            (d.合格者平均 as number) || 0
+        )),
+        100
     )
 
     // 統計
@@ -212,7 +224,7 @@ export default function DashboardPage() {
 
             {/* フィルター */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                <div className={`grid grid-cols-1 ${hasMultipleSessions ? 'md:grid-cols-2' : ''} gap-4`}>
+                <div className={`grid grid-cols-1 ${sessionLabels.length > 1 ? 'md:grid-cols-2' : ''} gap-4`}>
                     {/* 学校選択 */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">学校</label>
@@ -222,6 +234,7 @@ export default function DashboardPage() {
                                 onChange={(e) => {
                                     setSelectedSchoolId(e.target.value)
                                     setSelectedSessionLabel('')
+                                    setSelectedSubject('総合')
                                 }}
                                 className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
@@ -234,8 +247,8 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* 回ラベル選択（複数回がある場合のみ表示） */}
-                    {hasMultipleSessions && (
+                    {/* 回ラベル選択（複数ある場合のみ） */}
+                    {sessionLabels.length > 1 && (
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">回</label>
                             <div className="relative">
@@ -244,7 +257,6 @@ export default function DashboardPage() {
                                     onChange={(e) => setSelectedSessionLabel(e.target.value)}
                                     className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
-                                    <option value="">回を選択...</option>
                                     {sessionLabels.map(label => (
                                         <option key={label} value={label}>{label}</option>
                                     ))}
@@ -316,22 +328,39 @@ export default function DashboardPage() {
                         )}
                     </div>
 
+                    {/* 科目選択タブ */}
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                        {availableSubjects.map(subject => (
+                            <button
+                                key={subject}
+                                onClick={() => setSelectedSubject(subject)}
+                                className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${selectedSubject === subject
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {subject}
+                            </button>
+                        ))}
+                    </div>
+
                     {/* グラフ */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h2 className="text-lg font-semibold text-slate-800 mb-4">
-                            年度別得点推移
-                            {selectedSessionLabel && <span className="text-slate-500 ml-2">（{selectedSessionLabel}）</span>}
+                            {selectedSubject}の年度別得点推移
+                            {selectedSessionLabel && sessionLabels.length > 1 && (
+                                <span className="text-slate-500 ml-2">（{selectedSessionLabel}）</span>
+                            )}
                         </h2>
                         <div className="h-80">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={chartData} barCategoryGap="20%">
+                                <ComposedChart data={chartData} barCategoryGap="20%">
                                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                     <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
                                     <YAxis
                                         domain={[0, Math.ceil(maxScore * 1.1 / 10) * 10]}
                                         stroke="#94a3b8"
                                         fontSize={12}
-                                        unit="点"
                                     />
                                     <Tooltip
                                         contentStyle={{
@@ -345,68 +374,40 @@ export default function DashboardPage() {
 
                                     {/* 生徒の得点（バー） */}
                                     <Bar
-                                        dataKey="生徒の得点"
+                                        dataKey="あなたの得点"
                                         fill="#3b82f6"
                                         radius={[4, 4, 0, 0]}
-                                        name="あなたの得点"
                                     />
 
-                                    {/* 合格最低点（水平線） */}
-                                    {examData.some(d => d.passingMin) && (
-                                        <ReferenceLine
-                                            y={examData.find(d => d.passingMin)?.passingMin || 0}
-                                            stroke="#ef4444"
-                                            strokeDasharray="5 5"
-                                            strokeWidth={2}
-                                            label={{
-                                                value: '合格最低点',
-                                                position: 'insideTopRight',
-                                                fill: '#ef4444',
-                                                fontSize: 12,
-                                            }}
-                                        />
-                                    )}
+                                    {/* 合格最低点（折れ線） */}
+                                    <Line
+                                        type="monotone"
+                                        dataKey="合格最低点"
+                                        stroke="#ef4444"
+                                        strokeWidth={2}
+                                        strokeDasharray="5 5"
+                                        dot={{ fill: '#ef4444', r: 4 }}
+                                        connectNulls
+                                    />
 
-                                    {/* 合格者平均（水平線） */}
-                                    {examData.some(d => d.passingAvg) && (
-                                        <ReferenceLine
-                                            y={examData.find(d => d.passingAvg)?.passingAvg || 0}
-                                            stroke="#10b981"
-                                            strokeDasharray="3 3"
-                                            strokeWidth={2}
-                                            label={{
-                                                value: '合格者平均',
-                                                position: 'insideBottomRight',
-                                                fill: '#10b981',
-                                                fontSize: 12,
-                                            }}
-                                        />
-                                    )}
-                                </BarChart>
+                                    {/* 合格者平均（折れ線） */}
+                                    <Line
+                                        type="monotone"
+                                        dataKey="合格者平均"
+                                        stroke="#10b981"
+                                        strokeWidth={2}
+                                        dot={{ fill: '#10b981', r: 4 }}
+                                        connectNulls
+                                    />
+                                </ComposedChart>
                             </ResponsiveContainer>
-                        </div>
-
-                        {/* 凡例 */}
-                        <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                            <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 bg-blue-500 rounded"></div>
-                                <span className="text-slate-600">あなたの得点</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-0.5 bg-red-500" style={{ borderTop: '2px dashed #ef4444' }}></div>
-                                <span className="text-slate-600">合格最低点</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-0.5 bg-green-500" style={{ borderTop: '2px dashed #10b981' }}></div>
-                                <span className="text-slate-600">合格者平均</span>
-                            </div>
                         </div>
                     </div>
 
                     {/* 詳細テーブル */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="p-4 border-b border-slate-200">
-                            <h2 className="text-lg font-semibold text-slate-800">年度別詳細</h2>
+                            <h2 className="text-lg font-semibold text-slate-800">年度別詳細（{selectedSubject}）</h2>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full">
@@ -421,61 +422,77 @@ export default function DashboardPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
-                                    {examData.map(d => (
-                                        <tr key={d.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-3 text-sm font-medium text-slate-800">
-                                                {d.year}年{d.session_label && ` ${d.session_label}`}
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-sm text-slate-800">
-                                                {d.studentScore !== null
-                                                    ? <span className="font-bold text-blue-600">{d.studentScore}点</span>
-                                                    : <span className="text-slate-400">未実施</span>
-                                                }
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-sm text-slate-600">
-                                                {d.passingMin !== null ? `${d.passingMin}点` : '-'}
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-sm text-slate-600">
-                                                {d.passingAvg !== null ? `${d.passingAvg}点` : '-'}
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-sm text-slate-600">
-                                                {d.applicantAvg !== null ? `${d.applicantAvg}点` : '-'}
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                {d.studentScore !== null && d.passingMin !== null ? (
-                                                    d.studentScore >= d.passingMin ? (
-                                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-                                                            合格
-                                                        </span>
+                                    {examData.map(d => {
+                                        let score: number | null = null
+                                        let passingMin: number | null = null
+                                        let passingAvg: number | null = null
+                                        let applicantAvg: number | null = null
+
+                                        if (selectedSubject === '総合') {
+                                            score = d.studentScore
+                                            passingMin = d.passingMin
+                                            passingAvg = d.passingAvg
+                                            applicantAvg = d.applicantAvg
+                                        } else {
+                                            const subjectScore = d.subjectScores.find(s => s.subject === selectedSubject)
+                                            const subjectOfficial = d.subjectOfficialData.find(s => s.subject === selectedSubject)
+                                            score = subjectScore?.score || null
+                                            passingMin = subjectOfficial?.passingMin || null
+                                            passingAvg = subjectOfficial?.passingAvg || null
+                                        }
+
+                                        return (
+                                            <tr key={d.id} className="hover:bg-slate-50">
+                                                <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                                                    {d.year}年{d.session_label && sessionLabels.length <= 1 && ` ${d.session_label}`}
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-sm text-slate-800">
+                                                    {score !== null
+                                                        ? <span className="font-bold text-blue-600">{score}点</span>
+                                                        : <span className="text-slate-400">未実施</span>
+                                                    }
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                    {passingMin !== null ? `${passingMin}点` : '-'}
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                    {passingAvg !== null ? `${passingAvg}点` : '-'}
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                    {applicantAvg !== null ? `${applicantAvg}点` : '-'}
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    {score !== null && passingMin !== null ? (
+                                                        score >= passingMin ? (
+                                                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                                                合格
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
+                                                                あと{passingMin - score}点
+                                                            </span>
+                                                        )
                                                     ) : (
-                                                        <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
-                                                            あと{d.passingMin - d.studentScore}点
-                                                        </span>
-                                                    )
-                                                ) : (
-                                                    <span className="text-slate-400">-</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                        <span className="text-slate-400">-</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </>
-            ) : selectedSchoolId && (!hasMultipleSessions || selectedSessionLabel) ? (
+            ) : selectedSchoolId ? (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                     <p className="text-slate-500">この学校の試験データがまだありません</p>
                 </div>
-            ) : !selectedSchoolId ? (
+            ) : (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                     <p className="text-slate-500">学校を選択してください</p>
                 </div>
-            ) : hasMultipleSessions && !selectedSessionLabel ? (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
-                    <p className="text-slate-500">回を選択してください</p>
-                </div>
-            ) : null}
+            )}
         </div>
     )
 }
