@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import type { School } from '@/types/database'
-import { TrendingUp, Target, Award, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
 interface ExamSessionWithData {
     id: string
@@ -206,10 +206,6 @@ export default function DashboardPage() {
         100
     )
 
-    // 統計
-    const latestData = examData[examData.length - 1]
-    const recordCount = examData.filter(d => d.studentScore !== null).length
-
     if (loading && schools.length === 0) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -271,63 +267,6 @@ export default function DashboardPage() {
             {/* ダッシュボード本体 */}
             {examData.length > 0 ? (
                 <>
-                    {/* サマリーカード */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                                    <TrendingUp className="w-6 h-6 text-blue-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">解いた年度数</p>
-                                    <p className="text-2xl font-bold text-slate-800">{recordCount}年分</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {latestData?.studentScore !== null && (
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                                        <Target className="w-6 h-6 text-green-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-slate-500">最新年度の得点（{latestData.year}年）</p>
-                                        <p className="text-2xl font-bold text-slate-800">
-                                            {latestData.studentScore}/{latestData.studentMaxScore}点
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {latestData?.passingMin !== null && latestData?.studentScore !== null && (
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${latestData.studentScore >= latestData.passingMin
-                                            ? 'bg-green-100'
-                                            : 'bg-amber-100'
-                                        }`}>
-                                        <Award className={`w-6 h-6 ${latestData.studentScore >= latestData.passingMin
-                                                ? 'text-green-600'
-                                                : 'text-amber-600'
-                                            }`} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-slate-500">合格ラインとの差</p>
-                                        <p className={`text-2xl font-bold ${latestData.studentScore >= latestData.passingMin
-                                                ? 'text-green-600'
-                                                : 'text-amber-600'
-                                            }`}>
-                                            {latestData.studentScore >= latestData.passingMin ? '+' : ''}
-                                            {latestData.studentScore - latestData.passingMin}点
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
                     {/* 科目選択タブ */}
                     <div className="flex gap-2 overflow-x-auto pb-2">
                         {availableSubjects.map(subject => (
