@@ -2,37 +2,31 @@
 
 import React, { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
-import type { ExamSession, School, OfficialData } from '@/types/database'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
+import type { School } from '@/types/database'
 import { TrendingUp, Target, Award, ChevronDown } from 'lucide-react'
 
-interface SessionLabel {
-    label: string
-    years: number[]
-}
-
-interface YearData {
+interface ExamSessionWithData {
+    id: string
     year: number
-    examSessionId: string
-    records: {
-        id: string
-        practice_date: string
-        practice_scores: { subject: string; score: number; max_score: number }[]
-    }[]
-    officialData: OfficialData[]
-    requiredSubjects: { subject: string; max_score: number }[]
+    session_label: string
+    studentScore: number | null
+    studentMaxScore: number | null
+    passingMin: number | null
+    passingAvg: number | null
+    applicantAvg: number | null
 }
 
 export default function DashboardPage() {
     const [schools, setSchools] = useState<School[]>([])
     const [selectedSchoolId, setSelectedSchoolId] = useState<string>('')
-    const [sessionLabels, setSessionLabels] = useState<SessionLabel[]>([])
+    const [sessionLabels, setSessionLabels] = useState<string[]>([])
     const [selectedSessionLabel, setSelectedSessionLabel] = useState<string>('')
-    const [availableYears, setAvailableYears] = useState<number[]>([])
-    const [selectedYears, setSelectedYears] = useState<number[]>([])
-    const [yearDataMap, setYearDataMap] = useState<Map<number, YearData>>(new Map())
+    const [hasMultipleSessions, setHasMultipleSessions] = useState(false)
+    const [examData, setExamData] = useState<ExamSessionWithData[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedSubject, setSelectedSubject] = useState<string>('総合')
+    const [availableSubjects, setAvailableSubjects] = useState<string[]>(['総合'])
 
     const supabase = createClient()
 
@@ -49,198 +43,160 @@ export default function DashboardPage() {
         fetchSchools()
     }, [])
 
-    // 学校選択時に回ラベル一覧を取得（年度をグループ化）
+    // 学校選択時に回ラベル一覧を取得
     useEffect(() => {
         if (!selectedSchoolId) {
             setSessionLabels([])
             setSelectedSessionLabel('')
+            setHasMultipleSessions(false)
+            setExamData([])
             return
         }
+
         async function fetchSessionLabels() {
             const { data } = await supabase
                 .from('exam_sessions')
                 .select('session_label, year')
                 .eq('school_id', selectedSchoolId)
-                .order('year', { ascending: false })
 
             if (data) {
-                // 回ラベルでグループ化
-                const labelMap = new Map<string, number[]>()
+                // ユニークな回ラベルを取得
+                const uniqueLabels = [...new Set(data.map(d => d.session_label))].filter(Boolean)
+
+                // 同一年度に複数の回があるかチェック
+                const yearCounts = new Map<number, number>()
                 data.forEach(d => {
-                    const years = labelMap.get(d.session_label) || []
-                    if (!years.includes(d.year)) {
-                        years.push(d.year)
-                    }
-                    labelMap.set(d.session_label, years)
+                    yearCounts.set(d.year, (yearCounts.get(d.year) || 0) + 1)
                 })
+                const hasMultiple = Array.from(yearCounts.values()).some(count => count > 1)
 
-                const labels: SessionLabel[] = []
-                labelMap.forEach((years, label) => {
-                    labels.push({ label, years: years.sort((a, b) => b - a) })
-                })
+                setSessionLabels(uniqueLabels.sort())
+                setHasMultipleSessions(hasMultiple)
 
-                // 第1回、第2回...の順にソート
-                labels.sort((a, b) => a.label.localeCompare(b.label, 'ja'))
-                setSessionLabels(labels)
+                // 複数回がない場合は自動的に最初のラベルを選択（または空文字のまま進む）
+                if (!hasMultiple && uniqueLabels.length <= 1) {
+                    setSelectedSessionLabel(uniqueLabels[0] || '')
+                } else {
+                    setSelectedSessionLabel('')
+                }
             }
         }
+
         fetchSessionLabels()
     }, [selectedSchoolId])
 
-    // 回ラベル選択時に利用可能な年度を設定
+    // 回ラベル選択時（または自動選択時）にデータを取得
     useEffect(() => {
-        const label = sessionLabels.find(l => l.label === selectedSessionLabel)
-        if (label) {
-            setAvailableYears(label.years)
-            // デフォルトで全年度を選択
-            setSelectedYears(label.years)
-        } else {
-            setAvailableYears([])
-            setSelectedYears([])
-        }
-    }, [selectedSessionLabel, sessionLabels])
-
-    // 選択された年度のデータを取得
-    useEffect(() => {
-        if (!selectedSchoolId || !selectedSessionLabel || selectedYears.length === 0) {
-            setYearDataMap(new Map())
+        if (!selectedSchoolId) {
+            setExamData([])
             return
         }
 
-        async function fetchYearData() {
+        // 複数回がある場合は回を選択するまで待つ
+        if (hasMultipleSessions && !selectedSessionLabel) {
+            setExamData([])
+            return
+        }
+
+        async function fetchExamData() {
             setLoading(true)
-            const newMap = new Map<number, YearData>()
 
-            for (const year of selectedYears) {
-                // 試験回を取得
-                const { data: examSession } = await supabase
-                    .from('exam_sessions')
-                    .select('id, required_subjects(*)')
-                    .eq('school_id', selectedSchoolId)
-                    .eq('session_label', selectedSessionLabel)
-                    .eq('year', year)
-                    .single()
+            // 試験回を取得（回ラベルでフィルタリング）
+            let query = supabase
+                .from('exam_sessions')
+                .select('id, year, session_label, required_subjects(*)')
+                .eq('school_id', selectedSchoolId)
+                .order('year', { ascending: true })
 
-                if (examSession) {
-                    // 公式データを取得
-                    const { data: officialData } = await supabase
-                        .from('official_data')
-                        .select('*')
-                        .eq('exam_session_id', examSession.id)
-
-                    // 演習記録を取得
-                    const { data: records } = await supabase
-                        .from('practice_records')
-                        .select('id, practice_date, practice_scores(*)')
-                        .eq('exam_session_id', examSession.id)
-                        .order('practice_date', { ascending: true })
-
-                    newMap.set(year, {
-                        year,
-                        examSessionId: examSession.id,
-                        records: records || [],
-                        officialData: officialData || [],
-                        requiredSubjects: examSession.required_subjects || [],
-                    })
-                }
+            if (selectedSessionLabel) {
+                query = query.eq('session_label', selectedSessionLabel)
             }
 
-            setYearDataMap(newMap)
+            const { data: sessions } = await query
+
+            if (!sessions || sessions.length === 0) {
+                setExamData([])
+                setLoading(false)
+                return
+            }
+
+            // 科目リストを取得
+            const subjects = new Set<string>(['総合'])
+            sessions.forEach(s => {
+                (s.required_subjects || []).forEach((rs: { subject: string }) => subjects.add(rs.subject))
+            })
+            setAvailableSubjects(Array.from(subjects))
+
+            // 各試験回のデータを取得
+            const examDataList: ExamSessionWithData[] = []
+
+            for (const session of sessions) {
+                // 公式データを取得
+                const { data: officialData } = await supabase
+                    .from('official_data')
+                    .select('*')
+                    .eq('exam_session_id', session.id)
+                    .eq('subject', '総合')
+                    .single()
+
+                // 生徒の演習記録を取得
+                const { data: records } = await supabase
+                    .from('practice_records')
+                    .select('*, practice_scores(*)')
+                    .eq('exam_session_id', session.id)
+
+                let studentScore: number | null = null
+                let studentMaxScore: number | null = null
+
+                if (records && records.length > 0) {
+                    const record = records[0]
+                    const scores = record.practice_scores || []
+                    studentScore = scores.reduce((sum: number, s: { score: number }) => sum + s.score, 0)
+                    studentMaxScore = scores.reduce((sum: number, s: { max_score: number }) => sum + s.max_score, 0)
+                }
+
+                examDataList.push({
+                    id: session.id,
+                    year: session.year,
+                    session_label: session.session_label,
+                    studentScore,
+                    studentMaxScore,
+                    passingMin: officialData?.passing_min || null,
+                    passingAvg: officialData?.passer_avg || null,
+                    applicantAvg: officialData?.applicant_avg || null,
+                })
+            }
+
+            setExamData(examDataList)
             setLoading(false)
         }
 
-        fetchYearData()
-    }, [selectedSchoolId, selectedSessionLabel, selectedYears])
+        fetchExamData()
+    }, [selectedSchoolId, selectedSessionLabel, hasMultipleSessions])
 
-    // 年度選択のトグル
-    const toggleYear = (year: number) => {
-        setSelectedYears(prev =>
-            prev.includes(year)
-                ? prev.filter(y => y !== year)
-                : [...prev, year].sort((a, b) => b - a)
-        )
-    }
+    // グラフ用データ
+    const chartData = examData.map(d => ({
+        year: `${d.year}年`,
+        生徒の得点: d.studentScore,
+        合格最低点: d.passingMin,
+        合格者平均: d.passingAvg,
+        受験者平均: d.applicantAvg,
+        満点: d.studentMaxScore,
+    }))
 
-    // グラフ用データの生成（年度別に色分け）
-    const chartData: { name: string;[key: string]: number | string }[] = []
-    const yearColors: Record<number, string> = {}
-    const colorPalette = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+    // 最高点（Y軸の上限用）
+    const maxScore = Math.max(
+        ...examData.map(d => Math.max(
+            d.studentScore || 0,
+            d.passingMin || 0,
+            d.passingAvg || 0,
+            d.studentMaxScore || 0
+        ))
+    )
 
-    // 最大演習回数を計算
-    let maxRecordCount = 0
-    yearDataMap.forEach(data => {
-        if (data.records.length > maxRecordCount) {
-            maxRecordCount = data.records.length
-        }
-    })
-
-    // 年度ごとに色を割り当て
-    selectedYears.forEach((year, idx) => {
-        yearColors[year] = colorPalette[idx % colorPalette.length]
-    })
-
-    // 演習回数ごとのデータを作成
-    for (let i = 0; i < maxRecordCount; i++) {
-        const dataPoint: { name: string;[key: string]: number | string } = { name: `${i + 1}回目` }
-
-        selectedYears.forEach(year => {
-            const yearData = yearDataMap.get(year)
-            if (yearData && yearData.records[i]) {
-                const record = yearData.records[i]
-                const scores = record.practice_scores || []
-                const totalScore = scores.reduce((sum, s) => sum + s.score, 0)
-                const totalMaxScore = scores.reduce((sum, s) => sum + s.max_score, 0)
-
-                if (selectedSubject === '総合') {
-                    dataPoint[`${year}年`] = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0
-                } else {
-                    const subjectScore = scores.find(s => s.subject === selectedSubject)
-                    if (subjectScore) {
-                        dataPoint[`${year}年`] = subjectScore.max_score > 0
-                            ? Math.round((subjectScore.score / subjectScore.max_score) * 100)
-                            : 0
-                    }
-                }
-            }
-        })
-
-        chartData.push(dataPoint)
-    }
-
-    // 公式データ（合格最低点・合格者平均）を取得
-    const getOfficialDataForYear = (year: number) => {
-        const yearData = yearDataMap.get(year)
-        if (!yearData) return null
-
-        const official = yearData.officialData.find(d => d.subject === selectedSubject)
-        const totalMax = yearData.requiredSubjects.reduce((sum, s) => sum + s.max_score, 0)
-
-        if (!official || totalMax === 0) return null
-
-        return {
-            passingMin: official.passing_min ? Math.round((official.passing_min / totalMax) * 100) : null,
-            passingAvg: official.passer_avg ? Math.round((official.passer_avg / totalMax) * 100) : null,
-            applicantAvg: official.applicant_avg ? Math.round((official.applicant_avg / totalMax) * 100) : null,
-        }
-    }
-
-    // 科目リスト（最初の年度から取得）
-    const subjects = ['総合']
-    const firstYearData = yearDataMap.get(selectedYears[0])
-    if (firstYearData) {
-        firstYearData.requiredSubjects.forEach(s => subjects.push(s.subject))
-    }
-
-    // 統計計算
-    const totalRecords = Array.from(yearDataMap.values()).reduce((sum, d) => sum + d.records.length, 0)
-    const latestRecord = yearDataMap.get(selectedYears[0])?.records.slice(-1)[0]
-    let latestScore = 0
-    if (latestRecord) {
-        const scores = latestRecord.practice_scores || []
-        const totalScore = scores.reduce((sum, s) => sum + s.score, 0)
-        const totalMaxScore = scores.reduce((sum, s) => sum + s.max_score, 0)
-        latestScore = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0
-    }
+    // 統計
+    const latestData = examData[examData.length - 1]
+    const recordCount = examData.filter(d => d.studentScore !== null).length
 
     if (loading && schools.length === 0) {
         return (
@@ -256,7 +212,7 @@ export default function DashboardPage() {
 
             {/* フィルター */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 ${hasMultipleSessions ? 'md:grid-cols-2' : ''} gap-4`}>
                     {/* 学校選択 */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">学校</label>
@@ -278,49 +234,30 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* 回ラベル選択 */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">回</label>
-                        <div className="relative">
-                            <select
-                                value={selectedSessionLabel}
-                                onChange={(e) => setSelectedSessionLabel(e.target.value)}
-                                disabled={!selectedSchoolId}
-                                className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                            >
-                                <option value="">回を選択...</option>
-                                {sessionLabels.map(sl => (
-                                    <option key={sl.label} value={sl.label}>{sl.label}</option>
-                                ))}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
-                        </div>
-                    </div>
-
-                    {/* 年度選択（チェックボックス） */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">年度（複数選択可）</label>
-                        <div className="flex flex-wrap gap-2">
-                            {availableYears.map(year => (
-                                <button
-                                    key={year}
-                                    onClick={() => toggleYear(year)}
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedYears.includes(year)
-                                        ? 'text-white'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
-                                    style={selectedYears.includes(year) ? { backgroundColor: yearColors[year] } : {}}
+                    {/* 回ラベル選択（複数回がある場合のみ表示） */}
+                    {hasMultipleSessions && (
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">回</label>
+                            <div className="relative">
+                                <select
+                                    value={selectedSessionLabel}
+                                    onChange={(e) => setSelectedSessionLabel(e.target.value)}
+                                    className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
-                                    {year}年
-                                </button>
-                            ))}
+                                    <option value="">回を選択...</option>
+                                    {sessionLabels.map(label => (
+                                        <option key={label} value={label}>{label}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
 
             {/* ダッシュボード本体 */}
-            {yearDataMap.size > 0 && chartData.length > 0 ? (
+            {examData.length > 0 ? (
                 <>
                     {/* サマリーカード */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -330,231 +267,213 @@ export default function DashboardPage() {
                                     <TrendingUp className="w-6 h-6 text-blue-600" />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-slate-500">総演習回数</p>
-                                    <p className="text-2xl font-bold text-slate-800">{totalRecords}回</p>
+                                    <p className="text-sm text-slate-500">解いた年度数</p>
+                                    <p className="text-2xl font-bold text-slate-800">{recordCount}年分</p>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                                    <Target className="w-6 h-6 text-green-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">最新得点率（{selectedYears[0]}年）</p>
-                                    <p className="text-2xl font-bold text-slate-800">{latestScore}%</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                                    <Award className="w-6 h-6 text-purple-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">比較年度数</p>
-                                    <p className="text-2xl font-bold text-slate-800">{selectedYears.length}年分</p>
+                        {latestData?.studentScore !== null && (
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                                        <Target className="w-6 h-6 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-slate-500">最新年度の得点（{latestData.year}年）</p>
+                                        <p className="text-2xl font-bold text-slate-800">
+                                            {latestData.studentScore}/{latestData.studentMaxScore}点
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
+                        )}
 
-                    {/* 科目選択タブ */}
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                        {subjects.map(subject => (
-                            <button
-                                key={subject}
-                                onClick={() => setSelectedSubject(subject)}
-                                className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${selectedSubject === subject
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
-                            >
-                                {subject}
-                            </button>
-                        ))}
+                        {latestData?.passingMin !== null && latestData?.studentScore !== null && (
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${latestData.studentScore >= latestData.passingMin
+                                            ? 'bg-green-100'
+                                            : 'bg-amber-100'
+                                        }`}>
+                                        <Award className={`w-6 h-6 ${latestData.studentScore >= latestData.passingMin
+                                                ? 'text-green-600'
+                                                : 'text-amber-600'
+                                            }`} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-slate-500">合格ラインとの差</p>
+                                        <p className={`text-2xl font-bold ${latestData.studentScore >= latestData.passingMin
+                                                ? 'text-green-600'
+                                                : 'text-amber-600'
+                                            }`}>
+                                            {latestData.studentScore >= latestData.passingMin ? '+' : ''}
+                                            {latestData.studentScore - latestData.passingMin}点
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* グラフ */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h2 className="text-lg font-semibold text-slate-800 mb-4">
-                            {selectedSubject}の得点率推移（年度比較）
+                            年度別得点推移
+                            {selectedSessionLabel && <span className="text-slate-500 ml-2">（{selectedSessionLabel}）</span>}
                         </h2>
                         <div className="h-80">
                             <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={chartData}>
+                                <BarChart data={chartData} barCategoryGap="20%">
                                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
-                                    <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={12} unit="%" />
+                                    <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
+                                    <YAxis
+                                        domain={[0, Math.ceil(maxScore * 1.1 / 10) * 10]}
+                                        stroke="#94a3b8"
+                                        fontSize={12}
+                                        unit="点"
+                                    />
                                     <Tooltip
                                         contentStyle={{
                                             backgroundColor: '#fff',
                                             border: '1px solid #e2e8f0',
                                             borderRadius: '8px',
                                         }}
-                                        formatter={(value, name) => [`${value}%`, name]}
+                                        formatter={(value, name) => [value !== null ? `${value}点` : '-', name]}
                                     />
                                     <Legend />
 
-                                    {/* 年度ごとのライン */}
-                                    {selectedYears.map(year => (
-                                        <Line
-                                            key={year}
-                                            type="monotone"
-                                            dataKey={`${year}年`}
-                                            stroke={yearColors[year]}
-                                            strokeWidth={3}
-                                            dot={{ fill: yearColors[year], strokeWidth: 2, r: 5 }}
-                                            activeDot={{ r: 8 }}
-                                            connectNulls
+                                    {/* 生徒の得点（バー） */}
+                                    <Bar
+                                        dataKey="生徒の得点"
+                                        fill="#3b82f6"
+                                        radius={[4, 4, 0, 0]}
+                                        name="あなたの得点"
+                                    />
+
+                                    {/* 合格最低点（水平線） */}
+                                    {examData.some(d => d.passingMin) && (
+                                        <ReferenceLine
+                                            y={examData.find(d => d.passingMin)?.passingMin || 0}
+                                            stroke="#ef4444"
+                                            strokeDasharray="5 5"
+                                            strokeWidth={2}
+                                            label={{
+                                                value: '合格最低点',
+                                                position: 'insideTopRight',
+                                                fill: '#ef4444',
+                                                fontSize: 12,
+                                            }}
                                         />
-                                    ))}
+                                    )}
 
-                                    {/* 公式データのリファレンスライン */}
-                                    {selectedSubject === '総合' && selectedYears.map(year => {
-                                        const official = getOfficialDataForYear(year)
-                                        if (!official) return null
-
-                                        return (
-                                            <React.Fragment key={`ref-${year}`}>
-                                                {official.passingMin && (
-                                                    <ReferenceLine
-                                                        y={official.passingMin}
-                                                        stroke={yearColors[year]}
-                                                        strokeDasharray="5 5"
-                                                        strokeWidth={2}
-                                                        label={{
-                                                            value: `${year}年合格最低${official.passingMin}%`,
-                                                            position: 'insideTopRight',
-                                                            fill: yearColors[year],
-                                                            fontSize: 10,
-                                                        }}
-                                                    />
-                                                )}
-                                                {official.passingAvg && (
-                                                    <ReferenceLine
-                                                        y={official.passingAvg}
-                                                        stroke={yearColors[year]}
-                                                        strokeDasharray="2 2"
-                                                        strokeWidth={1}
-                                                        label={{
-                                                            value: `${year}年合格者平均${official.passingAvg}%`,
-                                                            position: 'insideBottomRight',
-                                                            fill: yearColors[year],
-                                                            fontSize: 10,
-                                                        }}
-                                                    />
-                                                )}
-                                            </React.Fragment>
-                                        )
-                                    })}
-                                </LineChart>
+                                    {/* 合格者平均（水平線） */}
+                                    {examData.some(d => d.passingAvg) && (
+                                        <ReferenceLine
+                                            y={examData.find(d => d.passingAvg)?.passingAvg || 0}
+                                            stroke="#10b981"
+                                            strokeDasharray="3 3"
+                                            strokeWidth={2}
+                                            label={{
+                                                value: '合格者平均',
+                                                position: 'insideBottomRight',
+                                                fill: '#10b981',
+                                                fontSize: 12,
+                                            }}
+                                        />
+                                    )}
+                                </BarChart>
                             </ResponsiveContainer>
                         </div>
 
-                        {/* 凡例（公式データ） */}
-                        {selectedSubject === '総合' && (
-                            <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                                {selectedYears.map(year => {
-                                    const official = getOfficialDataForYear(year)
-                                    if (!official) return null
-
-                                    return (
-                                        <div key={`legend-${year}`} className="flex items-center gap-2" style={{ color: yearColors[year] }}>
-                                            <span className="font-medium">{year}年:</span>
-                                            {official.passingMin && <span>最低{official.passingMin}%</span>}
-                                            {official.passingAvg && <span>/ 合格者平均{official.passingAvg}%</span>}
-                                            {official.applicantAvg && <span>/ 受験者平均{official.applicantAvg}%</span>}
-                                        </div>
-                                    )
-                                })}
+                        {/* 凡例 */}
+                        <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                            <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                                <span className="text-slate-600">あなたの得点</span>
                             </div>
-                        )}
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-0.5 bg-red-500" style={{ borderTop: '2px dashed #ef4444' }}></div>
+                                <span className="text-slate-600">合格最低点</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-0.5 bg-green-500" style={{ borderTop: '2px dashed #10b981' }}></div>
+                                <span className="text-slate-600">合格者平均</span>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* 詳細テーブル（年度別タブ） */}
+                    {/* 詳細テーブル */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="p-4 border-b border-slate-200 flex gap-2 overflow-x-auto">
-                            {selectedYears.map(year => (
-                                <span
-                                    key={year}
-                                    className="px-3 py-1 rounded-full text-sm font-medium text-white"
-                                    style={{ backgroundColor: yearColors[year] }}
-                                >
-                                    {year}年度
-                                </span>
-                            ))}
+                        <div className="p-4 border-b border-slate-200">
+                            <h2 className="text-lg font-semibold text-slate-800">年度別詳細</h2>
                         </div>
-
-                        {selectedYears.map(year => {
-                            const yearData = yearDataMap.get(year)
-                            if (!yearData || yearData.records.length === 0) return null
-
-                            return (
-                                <div key={year} className="border-b border-slate-200 last:border-0">
-                                    <div className="px-4 py-2 bg-slate-50">
-                                        <h3 className="font-medium" style={{ color: yearColors[year] }}>{year}年度の演習履歴</h3>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead className="bg-slate-50">
-                                                <tr>
-                                                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">回</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">日付</th>
-                                                    {yearData.requiredSubjects.map(s => (
-                                                        <th key={s.subject} className="px-4 py-2 text-center text-xs font-medium text-slate-500 uppercase">
-                                                            {s.subject}
-                                                        </th>
-                                                    ))}
-                                                    <th className="px-4 py-2 text-center text-xs font-medium text-slate-500 uppercase">総合</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-200">
-                                                {yearData.records.map((record, index) => {
-                                                    const scores = record.practice_scores || []
-                                                    const totalScore = scores.reduce((sum, s) => sum + s.score, 0)
-                                                    const totalMaxScore = scores.reduce((sum, s) => sum + s.max_score, 0)
-
-                                                    return (
-                                                        <tr key={record.id} className="hover:bg-slate-50">
-                                                            <td className="px-4 py-2 text-sm text-slate-600">{index + 1}</td>
-                                                            <td className="px-4 py-2 text-sm text-slate-800">
-                                                                {new Date(record.practice_date).toLocaleDateString('ja-JP')}
-                                                            </td>
-                                                            {yearData.requiredSubjects.map(s => {
-                                                                const score = scores.find(sc => sc.subject === s.subject)
-                                                                return (
-                                                                    <td key={s.subject} className="px-4 py-2 text-center text-sm text-slate-800">
-                                                                        {score ? `${score.score}/${score.max_score}` : '-'}
-                                                                    </td>
-                                                                )
-                                                            })}
-                                                            <td className="px-4 py-2 text-center text-sm font-medium text-slate-800">
-                                                                {totalScore}/{totalMaxScore}
-                                                                <span className="ml-2 text-blue-600">
-                                                                    ({totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0}%)
-                                                                </span>
-                                                            </td>
-                                                        </tr>
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-slate-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">年度</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">あなたの得点</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">合格最低点</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">合格者平均</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">受験者平均</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">判定</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200">
+                                    {examData.map(d => (
+                                        <tr key={d.id} className="hover:bg-slate-50">
+                                            <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                                                {d.year}年{d.session_label && ` ${d.session_label}`}
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-sm text-slate-800">
+                                                {d.studentScore !== null
+                                                    ? <span className="font-bold text-blue-600">{d.studentScore}点</span>
+                                                    : <span className="text-slate-400">未実施</span>
+                                                }
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                {d.passingMin !== null ? `${d.passingMin}点` : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                {d.passingAvg !== null ? `${d.passingAvg}点` : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                {d.applicantAvg !== null ? `${d.applicantAvg}点` : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                {d.studentScore !== null && d.passingMin !== null ? (
+                                                    d.studentScore >= d.passingMin ? (
+                                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                                            合格
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
+                                                            あと{d.passingMin - d.studentScore}点
+                                                        </span>
                                                     )
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )
-                        })}
+                                                ) : (
+                                                    <span className="text-slate-400">-</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </>
-            ) : yearDataMap.size > 0 ? (
+            ) : selectedSchoolId && (!hasMultipleSessions || selectedSessionLabel) ? (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
-                    <p className="text-slate-500">選択した年度の演習記録はまだありません</p>
+                    <p className="text-slate-500">この学校の試験データがまだありません</p>
                 </div>
-            ) : !selectedSessionLabel ? (
+            ) : !selectedSchoolId ? (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
-                    <p className="text-slate-500">学校と回を選択してください</p>
+                    <p className="text-slate-500">学校を選択してください</p>
+                </div>
+            ) : hasMultipleSessions && !selectedSessionLabel ? (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
+                    <p className="text-slate-500">回を選択してください</p>
                 </div>
             ) : null}
         </div>
