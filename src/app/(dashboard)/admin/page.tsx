@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { School, Calendar, Users, Database, Upload } from 'lucide-react'
+import { School, Calendar, Users, Database, Upload, Edit } from 'lucide-react'
 
 export default async function AdminPage() {
     const supabase = await createClient()
@@ -68,6 +68,13 @@ export default async function AdminPage() {
             href: '/admin/import',
             icon: Upload,
             color: 'amber',
+        },
+        {
+            title: 'データ編集',
+            description: 'インポート済みデータの閲覧・編集',
+            href: '/admin/edit',
+            icon: Edit,
+            color: 'indigo',
         },
     ]
 

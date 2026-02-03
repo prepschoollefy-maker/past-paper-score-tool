@@ -83,6 +83,12 @@ export default function DashboardPage() {
             return
         }
 
+        // selectedSessionLabelが設定されるまで待機
+        if (!selectedSessionLabel) {
+            setExamData([])
+            return
+        }
+
         async function fetchExamData() {
             setLoading(true)
 
@@ -175,8 +181,24 @@ export default function DashboardPage() {
         fetchExamData()
     }, [selectedSchoolId, selectedSessionLabel])
 
-    // グラフ用データ
-    const chartData = examData.map(d => {
+    // グラフ用データ（年度ごとに一意にする）
+    const uniqueExamData = examData.reduce((acc, current) => {
+        const existingIndex = acc.findIndex(item => item.year === current.year)
+        if (existingIndex === -1) {
+            // 新しい年度
+            acc.push(current)
+        } else {
+            // 同じ年度が既にある場合は、より新しいデータ（ID順）を保持
+            // またはデータがある方を優先
+            const existing = acc[existingIndex]
+            if (current.studentScore !== null && existing.studentScore === null) {
+                acc[existingIndex] = current
+            }
+        }
+        return acc
+    }, [] as ExamSessionWithData[])
+
+    const chartData = uniqueExamData.map(d => {
         if (selectedSubject === '総合') {
             return {
                 year: `${d.year}年`,

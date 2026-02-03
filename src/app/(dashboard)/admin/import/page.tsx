@@ -241,6 +241,21 @@ export default function ImportPage() {
                 <h1 className="text-2xl font-bold text-slate-800">データインポート</h1>
             </div>
 
+            {/* インポート方式の説明 */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-blue-800">
+                        <p className="font-semibold mb-1">データ上書き方式について</p>
+                        <p>
+                            インポートは<strong>上書き方式</strong>です。
+                            <strong>「学校名」「年度」「回」</strong>の組み合わせをキーとして、
+                            既存データがある場合は科目配点と公式データを完全に削除して再作成します。
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             {/* テンプレートダウンロード */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 <div className="flex items-start gap-4">
