@@ -242,11 +242,11 @@ export default function RecordsPage() {
 
                                                             {/* 得点 */}
                                                             <div className="text-right">
-                                                                <div className="text-2xl font-bold text-blue-600">
-                                                                    {totalRate}%
-                                                                </div>
-                                                                <div className="text-sm text-slate-500">
-                                                                    {totalScore}/{totalMaxScore}
+                                                                <div className="flex items-baseline justify-end gap-1">
+                                                                    <span className="text-2xl font-bold text-slate-800">{totalScore}</span>
+                                                                    <span className="text-slate-400">/</span>
+                                                                    <span className="text-lg font-semibold text-slate-600">{totalMaxScore}</span>
+                                                                    <span className="text-sm text-slate-500">点</span>
                                                                 </div>
                                                             </div>
 

@@ -75,26 +75,38 @@ export default async function DashboardLayout({
             </header>
 
             {/* モバイルナビゲーション */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50">
-                <div className="flex justify-around py-2">
-                    <Link href="/dashboard" className="flex flex-col items-center gap-1 p-2 text-slate-600">
-                        <LayoutDashboard className="w-5 h-5" />
-                        <span className="text-xs">ダッシュボード</span>
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 shadow-lg">
+                <div className="flex justify-around py-3">
+                    <Link
+                        href="/dashboard"
+                        className="flex flex-col items-center gap-1 px-4 py-2 text-slate-600 hover:text-blue-600 active:bg-slate-100 rounded-lg transition-all"
+                    >
+                        <LayoutDashboard className="w-6 h-6" />
+                        <span className="text-xs font-medium">ダッシュボード</span>
                     </Link>
-                    <Link href="/records" className="flex flex-col items-center gap-1 p-2 text-slate-600">
-                        <History className="w-5 h-5" />
-                        <span className="text-xs">履歴</span>
+                    <Link
+                        href="/records"
+                        className="flex flex-col items-center gap-1 px-4 py-2 text-slate-600 hover:text-blue-600 active:bg-slate-100 rounded-lg transition-all"
+                    >
+                        <History className="w-6 h-6" />
+                        <span className="text-xs font-medium">履歴</span>
                     </Link>
-                    <Link href="/records/new" className="flex flex-col items-center gap-1 p-2 text-blue-600">
-                        <div className="w-12 h-12 -mt-6 bg-blue-600 rounded-full flex items-center justify-center shadow-lg">
-                            <Plus className="w-6 h-6 text-white" />
+                    <Link
+                        href="/records/new"
+                        className="flex flex-col items-center gap-1 -mt-4"
+                    >
+                        <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-500 rounded-full flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-110 active:scale-95 transition-all">
+                            <Plus className="w-7 h-7 text-white" />
                         </div>
-                        <span className="text-xs">入力</span>
+                        <span className="text-xs font-medium text-blue-600 mt-1">入力</span>
                     </Link>
                     {isAdmin && (
-                        <Link href="/admin" className="flex flex-col items-center gap-1 p-2 text-slate-600">
-                            <Settings className="w-5 h-5" />
-                            <span className="text-xs">管理</span>
+                        <Link
+                            href="/admin"
+                            className="flex flex-col items-center gap-1 px-4 py-2 text-slate-600 hover:text-blue-600 active:bg-slate-100 rounded-lg transition-all"
+                        >
+                            <Settings className="w-6 h-6" />
+                            <span className="text-xs font-medium">管理</span>
                         </Link>
                     )}
                 </div>
