@@ -206,7 +206,8 @@ export default function NewRecordPage() {
                             value={practiceDate}
                             onChange={(e) => setPracticeDate(e.target.value)}
                             required
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full max-w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            style={{ maxWidth: '100%' }}
                         />
                     </div>
                 </div>

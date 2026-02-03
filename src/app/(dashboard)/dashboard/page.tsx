@@ -371,15 +371,15 @@ export default function DashboardPage() {
                             <h2 className="text-lg font-semibold text-slate-800">年度別詳細（{selectedSubject}）</h2>
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full">
+                            <table className="w-full" style={{ minWidth: '600px' }}>
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">年度</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">あなたの得点</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">合格最低点</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">合格者平均</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">受験者平均</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase">判定</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase whitespace-nowrap">年度</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">あなたの得点</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">合格最低点</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">合格者平均</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">受験者平均</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">判定</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
@@ -404,25 +404,25 @@ export default function DashboardPage() {
 
                                         return (
                                             <tr key={d.id} className="hover:bg-slate-50">
-                                                <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                                                <td className="px-4 py-3 text-sm font-medium text-slate-800 whitespace-nowrap">
                                                     {d.year}年{d.session_label && sessionLabels.length <= 1 && ` ${d.session_label}`}
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-800">
+                                                <td className="px-4 py-3 text-center text-sm text-slate-800 whitespace-nowrap">
                                                     {score !== null
                                                         ? <span className="font-bold text-blue-600">{score}点</span>
                                                         : <span className="text-slate-400">未実施</span>
                                                     }
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                <td className="px-4 py-3 text-center text-sm text-slate-600 whitespace-nowrap">
                                                     {passingMin !== null ? `${passingMin}点` : '-'}
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                <td className="px-4 py-3 text-center text-sm text-slate-600 whitespace-nowrap">
                                                     {passingAvg !== null ? `${passingAvg}点` : '-'}
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-600">
+                                                <td className="px-4 py-3 text-center text-sm text-slate-600 whitespace-nowrap">
                                                     {applicantAvg !== null ? `${applicantAvg}点` : '-'}
                                                 </td>
-                                                <td className="px-4 py-3 text-center">
+                                                <td className="px-4 py-3 text-center whitespace-nowrap">
                                                     {score !== null && passingMin !== null ? (
                                                         score >= passingMin ? (
                                                             <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">

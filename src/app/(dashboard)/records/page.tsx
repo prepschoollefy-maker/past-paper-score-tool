@@ -149,8 +149,7 @@ export default function RecordsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-800">演習履歴</h1>
+            <div className="flex items-center justify-end">
                 <Link
                     href="/records/new"
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
@@ -196,19 +195,9 @@ export default function RecordsPage() {
                                                 {group.records.length}件
                                             </span>
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-slate-500">
-                                            <div className="flex items-center gap-1">
-                                                <Award className="w-4 h-4 text-amber-500" />
-                                                <span>最高: {Math.round(group.highestRate)}%</span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <TrendingUp className="w-4 h-4 text-blue-500" />
-                                                <span>最新: {Math.round(group.latestRate)}%</span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <Calendar className="w-4 h-4" />
-                                                <span>{new Date(group.latestDate).toLocaleDateString('ja-JP')}</span>
-                                            </div>
+                                        <div className="flex items-center gap-2 mt-2 text-sm text-slate-500">
+                                            <Calendar className="w-4 h-4" />
+                                            <span>{new Date(group.latestDate).toLocaleDateString('ja-JP')}</span>
                                         </div>
                                     </div>
                                     {isExpanded ? (
