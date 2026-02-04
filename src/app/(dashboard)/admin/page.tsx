@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Upload, Edit } from 'lucide-react'
+import { Upload, Edit, UserPlus } from 'lucide-react'
 
 export default async function AdminPage() {
     const supabase = await createClient()
@@ -21,15 +21,22 @@ export default async function AdminPage() {
 
     const menuItems = [
         {
-            title: 'データインポート',
-            description: 'CSVから学校・試験データを一括登録',
+            title: '生徒追加',
+            description: '新規生徒アカウントを作成',
+            href: '/admin/students',
+            icon: UserPlus,
+            color: 'purple',
+        },
+        {
+            title: '過去問得点データインポート',
+            description: 'CSVから学校・試験回・公式データを一括登録',
             href: '/admin/import',
             icon: Upload,
             color: 'amber',
         },
         {
-            title: 'データ編集',
-            description: 'インポート済みデータの閲覧・編集',
+            title: '過去問得点データ編集',
+            description: 'インポート済みの試験データを閲覧・編集・追加',
             href: '/admin/edit',
             icon: Edit,
             color: 'indigo',
