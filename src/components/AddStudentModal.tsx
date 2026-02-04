@@ -75,12 +75,13 @@ export default function AddStudentModal({ isOpen, onClose, onSuccess }: AddStude
                 throw new Error('ユーザー作成に失敗しました')
             }
 
-            // プロフィールを更新（roleをuserに設定）
+            // プロフィールを更新（roleをuserに設定、emailも保存）
             const { error: profileError } = await supabase
                 .from('profiles')
                 .update({
                     role: 'user',
                     name: name.trim() || null,
+                    email: email.trim(),
                 })
                 .eq('id', authData.user.id)
 
