@@ -192,7 +192,7 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                         value={practiceDate}
                         onChange={(e) => setPracticeDate(e.target.value)}
                         required
-                        className="w-full max-w-full bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
+                        className="w-full bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
                     />
                 </div>
 

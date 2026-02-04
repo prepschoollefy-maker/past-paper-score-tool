@@ -10,6 +10,17 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Custom teal color palette */
+  --color-teal-50: #F8FCFC;
+  --color-teal-100: #EBF6F7;
+  --color-teal-200: #D9EEEF;
+  --color-teal-300: #7A9B9F;
+  --color-teal-400: #4DB8C4;
+  --color-teal-500: #3A9AA4;
+  --color-teal-600: #2D8A94;
+  --color-teal-700: #1A3E42;
+  --color-teal-800: #4A6B6F;
 }
 
 @media (prefers-color-scheme: dark) {
