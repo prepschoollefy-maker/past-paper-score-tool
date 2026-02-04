@@ -7,9 +7,9 @@ import type { PracticeRecord, ExamSession, School, RequiredSubject, ScoreInput }
 import { ChevronDown, Save, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
-interface RecordWithDetails extends PracticeRecord {
+interface RecordWithDetails extends Omit<PracticeRecord, 'practice_scores'> {
     exam_session?: ExamSession & { school?: School }
-    practice_scores?: { id: string; subject: string; score: number; max_score: number }[]
+    practice_scores?: { id: string; subject: string; score: number; max_score: number; practice_record_id: string }[]
 }
 
 export default function EditRecordPage({ params }: { params: { id: string } }) {
