@@ -143,7 +143,7 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4DB8C4]"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-400"></div>
             </div>
         )
     }
@@ -151,9 +151,9 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
     if (!record) {
         return (
             <div className="max-w-2xl mx-auto">
-                <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-12 text-center">
-                    <p className="text-[#7A9B9F]">記録が見つかりませんでした</p>
-                    <Link href="/records" className="mt-4 inline-block text-[#4DB8C4] hover:text-[#3A9AA4]">
+                <div className="bg-white rounded-xl shadow-md border border-teal-200 p-12 text-center">
+                    <p className="text-teal-300">記録が見つかりませんでした</p>
+                    <Link href="/records" className="mt-4 inline-block text-teal-400 hover:text-teal-500">
                         履歴に戻る
                     </Link>
                 </div>
@@ -164,20 +164,20 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
     return (
         <div className="max-w-2xl mx-auto space-y-6">
             <div className="flex items-center gap-4">
-                <Link href="/records" className="text-[#7A9B9F] hover:text-[#4DB8C4] transition-colors">
+                <Link href="/records" className="text-teal-300 hover:text-teal-400 transition-colors">
                     <ArrowLeft className="w-6 h-6" />
                 </Link>
-                <h1 className="text-2xl font-bold text-[#1A3E42]">得点編集</h1>
+                <h1 className="text-2xl font-bold text-teal-700">得点編集</h1>
             </div>
 
             {/* 試験情報（読み取り専用） */}
-            <div className="bg-[#EBF6F7] rounded-xl border border-[#D9EEEF] p-6">
-                <h2 className="font-semibold text-[#1A3E42] mb-3">試験情報</h2>
+            <div className="bg-teal-100 rounded-xl border border-teal-200 p-6">
+                <h2 className="font-semibold text-teal-700 mb-3">試験情報</h2>
                 <div className="space-y-2 text-sm">
-                    <p className="text-[#4A6B6F]">
+                    <p className="text-teal-800">
                         <span className="font-medium">学校:</span> {record.exam_session?.school?.name}
                     </p>
-                    <p className="text-[#4A6B6F]">
+                    <p className="text-teal-800">
                         <span className="font-medium">年度・回:</span> {record.exam_session?.year}年度 {record.exam_session?.session_label}
                     </p>
                 </div>
@@ -185,25 +185,25 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* 実施日 */}
-                <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-6">
-                    <label className="block text-sm font-medium text-[#1A3E42] mb-2">実施日</label>
+                <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6">
+                    <label className="block text-sm font-medium text-teal-700 mb-2">実施日</label>
                     <input
                         type="date"
                         value={practiceDate}
                         onChange={(e) => setPracticeDate(e.target.value)}
                         required
-                        className="w-full bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
+                        className="w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
                     />
                 </div>
 
                 {/* 得点入力 */}
-                <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-6 space-y-4">
-                    <h2 className="font-semibold text-[#1A3E42]">得点を編集</h2>
+                <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6 space-y-4">
+                    <h2 className="font-semibold text-teal-700">得点を編集</h2>
 
                     <div className="space-y-4">
                         {scores.map((score, index) => (
                             <div key={score.subject} className="flex items-center gap-4">
-                                <label className="w-16 text-sm font-medium text-[#1A3E42]">
+                                <label className="w-16 text-sm font-medium text-teal-700">
                                     {score.subject}
                                 </label>
                                 <div className="flex-1 flex items-center gap-2">
@@ -214,11 +214,11 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                                         value={score.score}
                                         onChange={(e) => handleScoreChange(index, e.target.value)}
                                         required
-                                        className="w-24 bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-center text-lg font-semibold text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
+                                        className="w-24 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-center text-lg font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
                                     />
-                                    <span className="text-[#7A9B9F]">/</span>
-                                    <span className="text-[#4A6B6F] font-medium">{score.max_score}</span>
-                                    <span className="ml-auto text-sm text-[#7A9B9F]">
+                                    <span className="text-teal-300">/</span>
+                                    <span className="text-teal-800 font-medium">{score.max_score}</span>
+                                    <span className="ml-auto text-sm text-teal-300">
                                         {score.max_score > 0 ? Math.round((score.score / score.max_score) * 100) : 0}%
                                     </span>
                                 </div>
@@ -227,16 +227,16 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                     </div>
 
                     {/* 合計 */}
-                    <div className="pt-4 border-t border-[#D9EEEF]">
+                    <div className="pt-4 border-t border-teal-200">
                         <div className="flex items-center gap-4">
-                            <span className="w-16 text-sm font-bold text-[#1A3E42]">合計</span>
+                            <span className="w-16 text-sm font-bold text-teal-700">合計</span>
                             <div className="flex-1 flex items-center gap-2">
-                                <span className="w-24 text-center text-xl font-bold text-[#4DB8C4]">
+                                <span className="w-24 text-center text-xl font-bold text-teal-400">
                                     {totalScore}
                                 </span>
-                                <span className="text-[#7A9B9F]">/</span>
-                                <span className="text-[#4A6B6F] font-medium">{totalMaxScore}</span>
-                                <span className="ml-auto text-lg font-bold text-[#4DB8C4]">
+                                <span className="text-teal-300">/</span>
+                                <span className="text-teal-800 font-medium">{totalMaxScore}</span>
+                                <span className="ml-auto text-lg font-bold text-teal-400">
                                     {totalRate}%
                                 </span>
                             </div>
@@ -245,14 +245,14 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                 </div>
 
                 {/* メモ */}
-                <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-6">
-                    <label className="block text-sm font-medium text-[#1A3E42] mb-2">メモ（任意）</label>
+                <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6">
+                    <label className="block text-sm font-medium text-teal-700 mb-2">メモ（任意）</label>
                     <textarea
                         value={memo}
                         onChange={(e) => setMemo(e.target.value)}
                         rows={3}
                         placeholder="気づいたことなどをメモ..."
-                        className="w-full bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4] resize-none"
+                        className="w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"
                     />
                 </div>
 
@@ -267,7 +267,7 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                 <button
                     type="submit"
                     disabled={saving}
-                    className="w-full py-4 px-6 bg-gradient-to-r from-[#4DB8C4] to-[#3A9AA4] hover:from-[#3A9AA4] hover:to-[#2D8A94] text-white font-semibold rounded-xl shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full py-4 px-6 bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                     <Save className="w-5 h-5" />
                     {saving ? '保存中...' : '保存する'}
