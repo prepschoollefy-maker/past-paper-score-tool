@@ -202,18 +202,18 @@ export default function DashboardPage() {
         if (selectedSubject === '総合') {
             return {
                 year: `${d.year}年`,
-                あなた�E得点: d.studentScore,
+                あなたの得点: d.studentScore,
                 合格最低点: d.passingMin,
-                合格老E��坁E d.passingAvg,
+                合格者平均点: d.passingAvg,
             }
         } else {
             const subjectScore = d.subjectScores.find(s => s.subject === selectedSubject)
             const subjectOfficial = d.subjectOfficialData.find(s => s.subject === selectedSubject)
             return {
                 year: `${d.year}年`,
-                あなた�E得点: subjectScore?.score || null,
+                あなたの得点: subjectScore?.score || null,
                 合格最低点: subjectOfficial?.passingMin || null,
-                合格老E��坁E subjectOfficial?.passingAvg || null,
+                合格者平均点: subjectOfficial?.passingAvg || null,
             }
         }
     })
