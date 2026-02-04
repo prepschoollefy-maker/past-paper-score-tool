@@ -25,7 +25,7 @@ export default function NewRecordPage() {
     const supabase = createClient()
     const router = useRouter()
 
-    // 学校一覧を取征E
+    // 学校一覧を取得
     useEffect(() => {
         async function fetchSchools() {
             const { data } = await supabase
@@ -38,7 +38,7 @@ export default function NewRecordPage() {
         fetchSchools()
     }, [])
 
-    // 学校選択時に試験回一覧を取征E
+    // 学校選択時に試験回一覧を取得
     useEffect(() => {
         if (!selectedSchoolId) {
             setExamSessions([])
@@ -56,7 +56,7 @@ export default function NewRecordPage() {
         fetchExamSessions()
     }, [selectedSchoolId])
 
-    // 試験回選択時に忁E��科目を取征E
+    // 試験回選択時に必要科目を取得
     useEffect(() => {
         if (!selectedExamSessionId) {
             setRequiredSubjects([])
@@ -71,7 +71,7 @@ export default function NewRecordPage() {
                 .order('display_order')
             if (data) {
                 setRequiredSubjects(data)
-                // 初期値をセチE��
+                // 初期値をセット
                 setScores(data.map(s => ({
                     subject: s.subject,
                     score: 0,
@@ -96,9 +96,9 @@ export default function NewRecordPage() {
 
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            if (!user) throw new Error('ログインが忁E��でぁE)
+            if (!user) throw new Error('ログインが必要です')
 
-            // 演習記録を作�E
+            // 演習記録を作成
             const { data: record, error: recordError } = await supabase
                 .from('practice_records')
                 .insert({
@@ -112,7 +112,7 @@ export default function NewRecordPage() {
 
             if (recordError) throw recordError
 
-            // 科目別得点を作�E
+            // 科目別得点を作成
             const scoreInserts = scores.map(s => ({
                 practice_record_id: record.id,
                 subject: s.subject,
@@ -135,7 +135,7 @@ export default function NewRecordPage() {
         }
     }
 
-    // 合計点の計箁E
+    // 合計点の計算
     const totalScore = scores.reduce((sum, s) => sum + s.score, 0)
     const totalMaxScore = scores.reduce((sum, s) => sum + s.max_score, 0)
     const totalRate = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0
@@ -154,13 +154,13 @@ export default function NewRecordPage() {
                 <Link href="/records" className="text-teal-300 hover:text-teal-400 transition-colors">
                     <ArrowLeft className="w-6 h-6" />
                 </Link>
-                <h1 className="text-2xl font-bold text-teal-700">得点入劁E/h1>
+                <h1 className="text-2xl font-bold text-teal-700">得点入力</h1>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                {/* 学校選抁E*/}
+                {/* 学校選択 */}
                 <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6 space-y-4">
-                    <h2 className="font-semibold text-teal-700">試験を選抁E/h2>
+                    <h2 className="font-semibold text-teal-700">試験を選択</h2>
 
                     <div>
                         <label className="block text-sm font-medium text-teal-700 mb-2">学校</label>
@@ -171,7 +171,7 @@ export default function NewRecordPage() {
                                 required
                                 className="w-full appearance-none bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 pr-10 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
                             >
-                                <option value="">学校を選抁E..</option>
+                                <option value="">学校を選択...</option>
                                 {schools.map(school => (
                                     <option key={school.id} value={school.id}>{school.name}</option>
                                 ))}
@@ -190,7 +190,7 @@ export default function NewRecordPage() {
                                 disabled={!selectedSchoolId}
                                 className="w-full appearance-none bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 pr-10 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-50"
                             >
-                                <option value="">試験回を選抁E..</option>
+                                <option value="">試験回を選択...</option>
                                 {examSessions.map(es => (
                                     <option key={es.id} value={es.id}>{es.year}年度 {es.session_label}</option>
                                 ))}
@@ -206,15 +206,16 @@ export default function NewRecordPage() {
                             value={practiceDate}
                             onChange={(e) => setPracticeDate(e.target.value)}
                             required
-                            className="w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            className="w-full max-w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            style={{ maxWidth: '100%' }}
                         />
                     </div>
                 </div>
 
-                {/* 得点入劁E*/}
+                {/* 得点入力 */}
                 {requiredSubjects.length > 0 && (
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6 space-y-4">
-                        <h2 className="font-semibold text-teal-700">得点を�E劁E/h2>
+                        <h2 className="font-semibold text-teal-700">得点を入力</h2>
 
                         <div className="space-y-4">
                             {scores.map((score, index) => (
@@ -242,10 +243,10 @@ export default function NewRecordPage() {
                             ))}
                         </div>
 
-                        {/* 合訁E*/}
+                        {/* 合計 */}
                         <div className="pt-4 border-t border-teal-200">
                             <div className="flex items-center gap-4">
-                                <span className="w-16 text-sm font-bold text-teal-700">合訁E/span>
+                                <span className="w-16 text-sm font-bold text-teal-700">合計</span>
                                 <div className="flex-1 flex items-center gap-2">
                                     <span className="w-24 text-center text-xl font-bold text-teal-400">
                                         {totalScore}
@@ -264,12 +265,12 @@ export default function NewRecordPage() {
                 {/* メモ */}
                 {requiredSubjects.length > 0 && (
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6">
-                        <label className="block text-sm font-medium text-teal-700 mb-2">メモ�E�任意！E/label>
+                        <label className="block text-sm font-medium text-teal-700 mb-2">メモ（任意）</label>
                         <textarea
                             value={memo}
                             onChange={(e) => setMemo(e.target.value)}
                             rows={3}
-                            placeholder="気づぁE��ことなどをメモ..."
+                            placeholder="気づいたことなどをメモ..."
                             className="w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"
                         />
                     </div>
@@ -282,7 +283,7 @@ export default function NewRecordPage() {
                     </div>
                 )}
 
-                {/* 保存�Eタン */}
+                {/* 保存ボタン */}
                 {requiredSubjects.length > 0 && (
                     <button
                         type="submit"
@@ -290,7 +291,7 @@ export default function NewRecordPage() {
                         className="w-full py-4 px-6 bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                         <Save className="w-5 h-5" />
-                        {saving ? '保存中...' : '保存すめE}
+                        {saving ? '保存中...' : '保存する'}
                     </button>
                 )}
             </form>

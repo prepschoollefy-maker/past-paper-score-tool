@@ -31,14 +31,14 @@ export default async function DashboardLayout({
                     <div className="flex justify-between items-center h-16">
                         <div className="flex items-center gap-2">
                             <Link href="/dashboard" className="text-xl font-bold text-teal-700">
-                                過去問得点管琁E
+                                過去問得点管理
                             </Link>
                         </div>
 
                         <nav className="hidden md:flex items-center gap-6">
                             <Link href="/dashboard" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                 <LayoutDashboard className="w-4 h-4" />
-                                ダチE��ュボ�EチE
+                                ダッシュボード
                             </Link>
                             <Link href="/records" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                 <History className="w-4 h-4" />
@@ -46,12 +46,12 @@ export default async function DashboardLayout({
                             </Link>
                             <Link href="/records/new" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                 <Plus className="w-4 h-4" />
-                                得点入劁E
+                                得点入力
                             </Link>
                             {isAdmin && (
                                 <Link href="/admin" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                     <Settings className="w-4 h-4" />
-                                    管琁E
+                                    管理
                                 </Link>
                             )}
                         </nav>
@@ -66,7 +66,7 @@ export default async function DashboardLayout({
                                     className="flex items-center gap-2 text-teal-800 hover:text-red-500 transition-colors"
                                 >
                                     <LogOut className="w-4 h-4" />
-                                    <span className="hidden sm:inline">ログアウチE/span>
+                                    <span className="hidden sm:inline">ログアウト</span>
                                 </button>
                             </form>
                         </div>
@@ -82,7 +82,7 @@ export default async function DashboardLayout({
                         className="flex flex-col items-center gap-1 px-4 py-2 text-teal-800 hover:text-teal-400 active:bg-teal-200/30 rounded-lg transition-all"
                     >
                         <LayoutDashboard className="w-6 h-6" />
-                        <span className="text-xs font-medium">ダチE��ュボ�EチE/span>
+                        <span className="text-xs font-medium">ダッシュボード</span>
                     </Link>
                     <Link
                         href="/records"
@@ -98,7 +98,7 @@ export default async function DashboardLayout({
                         <div className="w-14 h-14 bg-gradient-to-br from-teal-400 to-teal-500 rounded-full flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-110 active:scale-95 transition-all">
                             <Plus className="w-7 h-7 text-white" />
                         </div>
-                        <span className="text-xs font-medium text-teal-400 mt-1">入劁E/span>
+                        <span className="text-xs font-medium text-teal-400 mt-1">入力</span>
                     </Link>
                     {isAdmin && (
                         <Link
@@ -106,13 +106,13 @@ export default async function DashboardLayout({
                             className="flex flex-col items-center gap-1 px-4 py-2 text-teal-800 hover:text-teal-400 active:bg-teal-200/30 rounded-lg transition-all"
                         >
                             <Settings className="w-6 h-6" />
-                            <span className="text-xs font-medium">管琁E/span>
+                            <span className="text-xs font-medium">管理</span>
                         </Link>
                     )}
                 </div>
             </nav>
 
-            {/* メインコンチE��チE*/}
+            {/* メインコンテンツ */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6">
                 {children}
             </main>
