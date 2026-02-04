@@ -38,7 +38,7 @@ export default async function DashboardLayout({
                         <nav className="hidden md:flex items-center gap-6">
                             <Link href="/dashboard" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                 <LayoutDashboard className="w-4 h-4" />
-                                ダチE��ュボ�EチE
+                                ダチE��ュボ�EチE
                             </Link>
                             <Link href="/records" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                 <History className="w-4 h-4" />
@@ -82,7 +82,7 @@ export default async function DashboardLayout({
                         className="flex flex-col items-center gap-1 px-4 py-2 text-teal-800 hover:text-teal-400 active:bg-teal-200/30 rounded-lg transition-all"
                     >
                         <LayoutDashboard className="w-6 h-6" />
-                        <span className="text-xs font-medium">ダチE��ュボ�EチE/span>
+                        <span className="text-xs font-medium">ダチE��ュボ�EチE/span>
                     </Link>
                     <Link
                         href="/records"
@@ -112,7 +112,7 @@ export default async function DashboardLayout({
                 </div>
             </nav>
 
-            {/* メインコンチE��チE*/}
+            {/* メインコンチE��チE*/}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6">
                 {children}
             </main>

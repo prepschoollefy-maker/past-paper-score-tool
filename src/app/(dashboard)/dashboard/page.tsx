@@ -60,11 +60,11 @@ export default function DashboardPage() {
                 .eq('school_id', selectedSchoolId)
 
             if (data) {
-                // ユニ�Eクな回ラベルを取征E
+                // ユニ�Eクな回ラベルを取征E
                 const uniqueLabels = [...new Set(data.map(d => d.session_label))].filter(Boolean).sort()
                 setSessionLabels(uniqueLabels)
 
-                // 最初�Eラベルを�E動選抁E
+                // 最初�Eラベルを�E動選抁E
                 if (uniqueLabels.length > 0) {
                     setSelectedSessionLabel(uniqueLabels[0])
                 } else {
@@ -76,14 +76,14 @@ export default function DashboardPage() {
         fetchSessionLabels()
     }, [selectedSchoolId])
 
-    // 回ラベル選択時にチE�Eタを取征E
+    // 回ラベル選択時にチE�Eタを取征E
     useEffect(() => {
         if (!selectedSchoolId) {
             setExamData([])
             return
         }
 
-        // selectedSessionLabelが設定されるまで征E��E
+        // selectedSessionLabelが設定されるまで征E��E
         if (!selectedSessionLabel) {
             setExamData([])
             return
@@ -119,11 +119,11 @@ export default function DashboardPage() {
             })
             setAvailableSubjects(Array.from(subjects))
 
-            // 吁E��験回のチE�Eタを取征E
+            // 吁E��験回のチE�Eタを取征E
             const examDataList: ExamSessionWithData[] = []
 
             for (const session of sessions) {
-                // 公式データを�E科目取征E
+                // 公式データを�E科目取征E
                 const { data: officialDataList } = await supabase
                     .from('official_data')
                     .select('*')
@@ -138,7 +138,7 @@ export default function DashboardPage() {
                         passingAvg: d.passer_avg,
                     }))
 
-                // 生徒�E演習記録を取征E
+                // 生徒�E演習記録を取征E
                 const { data: records } = await supabase
                     .from('practice_records')
                     .select('*, practice_scores(*)')
@@ -181,15 +181,15 @@ export default function DashboardPage() {
         fetchExamData()
     }, [selectedSchoolId, selectedSessionLabel])
 
-    // グラフ用チE�Eタ�E�年度ごとに一意にする�E�E
+    // グラフ用チE�Eタ�E�年度ごとに一意にする�E�E
     const uniqueExamData = examData.reduce((acc, current) => {
         const existingIndex = acc.findIndex(item => item.year === current.year)
         if (existingIndex === -1) {
             // 新しい年度
             acc.push(current)
         } else {
-            // 同じ年度が既にある場合�E、より新しいチE�Eタ�E�ED頁E��を保持
-            // また�EチE�Eタがある方を優允E
+            // 同じ年度が既にある場合�E、より新しいチE�Eタ�E�ED頁E��を保持
+            // また�EチE�Eタがある方を優允E
             const existing = acc[existingIndex]
             if (current.studentScore !== null && existing.studentScore === null) {
                 acc[existingIndex] = current
@@ -202,28 +202,28 @@ export default function DashboardPage() {
         if (selectedSubject === '総合') {
             return {
                 year: `${d.year}年`,
-                あなた�E得点: d.studentScore,
+                あなた�E得点: d.studentScore,
                 合格最低点: d.passingMin,
-                合格老E��坁E d.passingAvg,
+                合格老E��坁E d.passingAvg,
             }
         } else {
             const subjectScore = d.subjectScores.find(s => s.subject === selectedSubject)
             const subjectOfficial = d.subjectOfficialData.find(s => s.subject === selectedSubject)
             return {
                 year: `${d.year}年`,
-                あなた�E得点: subjectScore?.score || null,
+                あなた�E得点: subjectScore?.score || null,
                 合格最低点: subjectOfficial?.passingMin || null,
-                合格老E��坁E subjectOfficial?.passingAvg || null,
+                合格老E��坁E subjectOfficial?.passingAvg || null,
             }
         }
     })
 
-    // 最高点�E�E軸の上限用�E�E
+    // 最高点�E�E軸の上限用�E�E
     const maxScore = Math.max(
         ...chartData.map(d => Math.max(
-            (d.あなた�E得点 as number) || 0,
+            (d.あなた�E得点 as number) || 0,
             (d.合格最低点 as number) || 0,
-            (d.合格老E��坁Eas number) || 0
+            (d.合格老E��坁Eas number) || 0
         )),
         100
     )
@@ -238,7 +238,7 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-teal-700">ダチE��ュボ�EチE/h1>
+            <h1 className="text-2xl font-bold text-teal-700">ダチE��ュボ�EチE/h1>
 
             {/* フィルター */}
             <div className="bg-white rounded-xl shadow-md border border-teal-200 p-4">
@@ -265,7 +265,7 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* 回ラベル選択（褁E��ある場合�Eみ�E�E*/}
+                    {/* 回ラベル選択（褁E��ある場合�Eみ�E�E*/}
                     {sessionLabels.length > 1 && (
                         <div>
                             <label className="block text-sm font-medium text-teal-700 mb-2">囁E/label>
@@ -286,7 +286,7 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* ダチE��ュボ�Eド本佁E*/}
+            {/* ダチE��ュボ�Eド本佁E*/}
             {examData.length > 0 ? (
                 <>
                     {/* 科目選択タチE*/}
@@ -310,7 +310,7 @@ export default function DashboardPage() {
                         <h2 className="text-lg font-semibold text-teal-700 mb-4">
                             {selectedSubject}の年度別得点推移
                             {selectedSessionLabel && sessionLabels.length > 1 && (
-                                <span className="text-teal-300 ml-2">�E�EselectedSessionLabel}�E�E/span>
+                                <span className="text-teal-300 ml-2">�E�EselectedSessionLabel}�E�E/span>
                             )}
                         </h2>
                         <div className="h-80">
@@ -333,14 +333,14 @@ export default function DashboardPage() {
                                     />
                                     <Legend />
 
-                                    {/* 生徒�E得点�E�バー�E�E*/}
+                                    {/* 生徒�E得点�E�バー�E�E*/}
                                     <Bar
-                                        dataKey="あなた�E得点"
+                                        dataKey="あなた�E得点"
                                         fill="#4DB8C4"
                                         radius={[4, 4, 0, 0]}
                                     />
 
-                                    {/* 合格最低点�E�折れ線！E*/}
+                                    {/* 合格最低点�E�折れ線！E*/}
                                     <Line
                                         type="monotone"
                                         dataKey="合格最低点"
@@ -351,10 +351,10 @@ export default function DashboardPage() {
                                         connectNulls
                                     />
 
-                                    {/* 合格老E��坁E��折れ線！E*/}
+                                    {/* 合格老E��坁E��折れ線！E*/}
                                     <Line
                                         type="monotone"
-                                        dataKey="合格老E��坁E
+                                        dataKey="合格老E��坁E
                                         stroke="#10b981"
                                         strokeWidth={2}
                                         dot={{ fill: '#10b981', r: 4 }}
@@ -365,20 +365,20 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* 詳細チE�Eブル */}
+                    {/* 詳細チE�Eブル */}
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 overflow-hidden">
                         <div className="p-4 border-b border-teal-200 bg-teal-100">
-                            <h2 className="text-lg font-semibold text-teal-700">年度別詳細�E�EselectedSubject}�E�E/h2>
+                            <h2 className="text-lg font-semibold text-teal-700">年度別詳細�E�EselectedSubject}�E�E/h2>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full" style={{ minWidth: '600px' }}>
                                 <thead className="bg-teal-100">
                                     <tr>
                                         <th className="px-4 py-3 text-left text-xs font-medium text-teal-800 uppercase whitespace-nowrap">年度</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">あなた�E得点</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">あなた�E得点</th>
                                         <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">合格最低点</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">合格老E��坁E/th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">受験老E��坁E/th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">合格老E��坁E/th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">受験老E��坁E/th>
                                         <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">判宁E/th>
                                     </tr>
                                 </thead>
@@ -447,7 +447,7 @@ export default function DashboardPage() {
                 </>
             ) : selectedSchoolId ? (
                 <div className="bg-white rounded-xl shadow-md border border-teal-200 p-12 text-center">
-                    <p className="text-teal-300">こ�E学校の試験データがまだありません</p>
+                    <p className="text-teal-300">こ�E学校の試験データがまだありません</p>
                 </div>
             ) : (
                 <div className="bg-white rounded-xl shadow-md border border-teal-200 p-12 text-center">

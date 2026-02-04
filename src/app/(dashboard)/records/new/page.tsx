@@ -56,7 +56,7 @@ export default function NewRecordPage() {
         fetchExamSessions()
     }, [selectedSchoolId])
 
-    // 試験回選択時に忁E��科目を取征E
+    // 試験回選択時に忁E��科目を取征E
     useEffect(() => {
         if (!selectedExamSessionId) {
             setRequiredSubjects([])
@@ -71,7 +71,7 @@ export default function NewRecordPage() {
                 .order('display_order')
             if (data) {
                 setRequiredSubjects(data)
-                // 初期値をセチE��
+                // 初期値をセチE��
                 setScores(data.map(s => ({
                     subject: s.subject,
                     score: 0,
@@ -96,9 +96,9 @@ export default function NewRecordPage() {
 
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            if (!user) throw new Error('ログインが忁E��でぁE)
+            if (!user) throw new Error('ログインが忁E��でぁE)
 
-            // 演習記録を作�E
+            // 演習記録を作�E
             const { data: record, error: recordError } = await supabase
                 .from('practice_records')
                 .insert({
@@ -112,7 +112,7 @@ export default function NewRecordPage() {
 
             if (recordError) throw recordError
 
-            // 科目別得点を作�E
+            // 科目別得点を作�E
             const scoreInserts = scores.map(s => ({
                 practice_record_id: record.id,
                 subject: s.subject,
@@ -214,7 +214,7 @@ export default function NewRecordPage() {
                 {/* 得点入劁E*/}
                 {requiredSubjects.length > 0 && (
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6 space-y-4">
-                        <h2 className="font-semibold text-teal-700">得点を�E劁E/h2>
+                        <h2 className="font-semibold text-teal-700">得点を�E劁E/h2>
 
                         <div className="space-y-4">
                             {scores.map((score, index) => (
@@ -264,12 +264,12 @@ export default function NewRecordPage() {
                 {/* メモ */}
                 {requiredSubjects.length > 0 && (
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6">
-                        <label className="block text-sm font-medium text-teal-700 mb-2">メモ�E�任意！E/label>
+                        <label className="block text-sm font-medium text-teal-700 mb-2">メモ�E�任意！E/label>
                         <textarea
                             value={memo}
                             onChange={(e) => setMemo(e.target.value)}
                             rows={3}
-                            placeholder="気づぁE��ことなどをメモ..."
+                            placeholder="気づぁE��ことなどをメモ..."
                             className="w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"
                         />
                     </div>
@@ -282,7 +282,7 @@ export default function NewRecordPage() {
                     </div>
                 )}
 
-                {/* 保存�Eタン */}
+                {/* 保存�Eタン */}
                 {requiredSubjects.length > 0 && (
                     <button
                         type="submit"
