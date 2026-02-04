@@ -308,7 +308,7 @@ export default function DashboardPage() {
                     {/* グラフ */}
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6">
                         <h2 className="text-lg font-semibold text-teal-700 mb-4">
-                            {selectedSubject}の年度別得点推移
+                            グラフ推移
                             {selectedSessionLabel && sessionLabels.length > 1 && (
                                 <span className="text-teal-300 ml-2">（{selectedSessionLabel}）</span>
                             )}
@@ -355,9 +355,9 @@ export default function DashboardPage() {
                                     <Line
                                         type="monotone"
                                         dataKey="合格者平均"
-                                        stroke="#10b981"
+                                        stroke="#7c3aed"
                                         strokeWidth={2}
-                                        dot={{ fill: '#10b981', r: 4 }}
+                                        dot={{ fill: '#7c3aed', r: 4 }}
                                         connectNulls
                                     />
                                 </ComposedChart>
@@ -368,7 +368,7 @@ export default function DashboardPage() {
                     {/* 詳細テーブル */}
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 overflow-hidden">
                         <div className="p-4 border-b border-teal-200 bg-teal-100">
-                            <h2 className="text-lg font-semibold text-teal-700">年度別詳細（{selectedSubject}）</h2>
+                            <h2 className="text-lg font-semibold text-teal-700">表（詳細）</h2>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full" style={{ minWidth: '600px' }}>

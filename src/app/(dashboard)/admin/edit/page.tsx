@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader2, Plus, UserPlus } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus } from 'lucide-react'
 import Link from 'next/link'
 import AddDataModal from '@/components/AddDataModal'
-import AddStudentModal from '@/components/AddStudentModal'
 
 interface FlattenedRow {
     sessionId: string
@@ -72,7 +71,6 @@ export default function EditPage() {
     const [savingCell, setSavingCell] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [showAddDataModal, setShowAddDataModal] = useState(false)
-    const [showAddStudentModal, setShowAddStudentModal] = useState(false)
 
     const supabase = createClient()
 
@@ -335,24 +333,15 @@ export default function EditPage() {
                     <Link href="/admin" className="text-slate-400 hover:text-slate-600 transition-colors">
                         <ArrowLeft className="w-6 h-6" />
                     </Link>
-                    <h1 className="text-2xl font-bold text-slate-800">データ編集</h1>
+                    <h1 className="text-2xl font-bold text-slate-800">過去問得点データ編集</h1>
                 </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => setShowAddStudentModal(true)}
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
-                    >
-                        <UserPlus className="w-4 h-4" />
-                        生徒追加
-                    </button>
-                    <button
-                        onClick={() => setShowAddDataModal(true)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                    >
-                        <Plus className="w-4 h-4" />
-                        試験データ追加
-                    </button>
-                </div>
+                <button
+                    onClick={() => setShowAddDataModal(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                    <Plus className="w-4 h-4" />
+                    試験データ追加
+                </button>
             </div>
 
             {/* 検索ボックス */}
@@ -443,14 +432,6 @@ export default function EditPage() {
                 isOpen={showAddDataModal}
                 onClose={() => setShowAddDataModal(false)}
                 onSuccess={() => fetchData()}
-            />
-
-            <AddStudentModal
-                isOpen={showAddStudentModal}
-                onClose={() => setShowAddStudentModal(false)}
-                onSuccess={() => {
-                    // 生徒追加成功時の処理（必要に応じて）
-                }}
             />
         </div>
     )

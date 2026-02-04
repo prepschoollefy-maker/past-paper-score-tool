@@ -41,7 +41,7 @@ export default async function AdminPage() {
             <h1 className="text-2xl font-bold text-slate-800">管理者メニュー</h1>
 
             {/* メニュー */}
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid md:grid-cols-3 gap-4">
                 {menuItems.map((item) => (
                     <Link
                         key={item.href}
