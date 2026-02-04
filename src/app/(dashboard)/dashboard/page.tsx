@@ -231,21 +231,21 @@ export default function DashboardPage() {
     if (loading && schools.length === 0) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4DB8C4]"></div>
             </div>
         )
     }
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-slate-800">ダッシュボード</h1>
+            <h1 className="text-2xl font-bold text-[#1A3E42]">ダッシュボード</h1>
 
             {/* フィルター */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+            <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-4">
                 <div className={`grid grid-cols-1 ${sessionLabels.length > 1 ? 'md:grid-cols-2' : ''} gap-4`}>
                     {/* 学校選択 */}
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">学校</label>
+                        <label className="block text-sm font-medium text-[#1A3E42] mb-2">学校</label>
                         <div className="relative">
                             <select
                                 value={selectedSchoolId}
@@ -254,26 +254,26 @@ export default function DashboardPage() {
                                     setSelectedSessionLabel('')
                                     setSelectedSubject('総合')
                                 }}
-                                className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full appearance-none bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 pr-10 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
                             >
                                 <option value="">学校を選択...</option>
                                 {schools.map(school => (
                                     <option key={school.id} value={school.id}>{school.name}</option>
                                 ))}
                             </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#7A9B9F] pointer-events-none" />
                         </div>
                     </div>
 
                     {/* 回ラベル選択（複数ある場合のみ） */}
                     {sessionLabels.length > 1 && (
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">回</label>
+                            <label className="block text-sm font-medium text-[#1A3E42] mb-2">回</label>
                             <div className="relative">
                                 <select
                                     value={selectedSessionLabel}
                                     onChange={(e) => setSelectedSessionLabel(e.target.value)}
-                                    className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full appearance-none bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 pr-10 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
                                 >
                                     {sessionLabels.map(label => (
                                         <option key={label} value={label}>{label}</option>
@@ -296,8 +296,8 @@ export default function DashboardPage() {
                                 key={subject}
                                 onClick={() => setSelectedSubject(subject)}
                                 className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${selectedSubject === subject
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                    ? 'bg-[#4DB8C4] text-white shadow-md'
+                                    : 'bg-white text-[#4A6B6F] border border-[#D9EEEF] hover:bg-[#EBF6F7]'
                                     }`}
                             >
                                 {subject}
@@ -306,11 +306,11 @@ export default function DashboardPage() {
                     </div>
 
                     {/* グラフ */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                        <h2 className="text-lg font-semibold text-slate-800 mb-4">
+                    <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-6">
+                        <h2 className="text-lg font-semibold text-[#1A3E42] mb-4">
                             {selectedSubject}の年度別得点推移
                             {selectedSessionLabel && sessionLabels.length > 1 && (
-                                <span className="text-slate-500 ml-2">（{selectedSessionLabel}）</span>
+                                <span className="text-[#7A9B9F] ml-2">（{selectedSessionLabel}）</span>
                             )}
                         </h2>
                         <div className="h-80">
@@ -336,7 +336,7 @@ export default function DashboardPage() {
                                     {/* 生徒の得点（バー） */}
                                     <Bar
                                         dataKey="あなたの得点"
-                                        fill="#3b82f6"
+                                        fill="#4DB8C4"
                                         radius={[4, 4, 0, 0]}
                                     />
 
@@ -366,23 +366,23 @@ export default function DashboardPage() {
                     </div>
 
                     {/* 詳細テーブル */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="p-4 border-b border-slate-200">
-                            <h2 className="text-lg font-semibold text-slate-800">年度別詳細（{selectedSubject}）</h2>
+                    <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] overflow-hidden">
+                        <div className="p-4 border-b border-[#D9EEEF] bg-[#EBF6F7]">
+                            <h2 className="text-lg font-semibold text-[#1A3E42]">年度別詳細（{selectedSubject}）</h2>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full" style={{ minWidth: '600px' }}>
-                                <thead className="bg-slate-50">
+                                <thead className="bg-[#EBF6F7]">
                                     <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase whitespace-nowrap">年度</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">あなたの得点</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">合格最低点</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">合格者平均</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">受験者平均</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase whitespace-nowrap">判定</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-[#4A6B6F] uppercase whitespace-nowrap">年度</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-[#4A6B6F] uppercase whitespace-nowrap">あなたの得点</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-[#4A6B6F] uppercase whitespace-nowrap">合格最低点</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-[#4A6B6F] uppercase whitespace-nowrap">合格者平均</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-[#4A6B6F] uppercase whitespace-nowrap">受験者平均</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-[#4A6B6F] uppercase whitespace-nowrap">判定</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-200">
+                                <tbody className="divide-y divide-[#D9EEEF]">
                                     {examData.map(d => {
                                         let score: number | null = null
                                         let passingMin: number | null = null
@@ -403,23 +403,23 @@ export default function DashboardPage() {
                                         }
 
                                         return (
-                                            <tr key={d.id} className="hover:bg-slate-50">
-                                                <td className="px-4 py-3 text-sm font-medium text-slate-800 whitespace-nowrap">
+                                            <tr key={d.id} className="hover:bg-[#F8FCFC]">
+                                                <td className="px-4 py-3 text-sm font-medium text-[#1A3E42] whitespace-nowrap">
                                                     {d.year}年{d.session_label && sessionLabels.length <= 1 && ` ${d.session_label}`}
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-800 whitespace-nowrap">
+                                                <td className="px-4 py-3 text-center text-sm text-[#1A3E42] whitespace-nowrap">
                                                     {score !== null
-                                                        ? <span className="font-bold text-blue-600">{score}点</span>
-                                                        : <span className="text-slate-400">未実施</span>
+                                                        ? <span className="font-bold text-[#4DB8C4]">{score}点</span>
+                                                        : <span className="text-[#7A9B9F]">未実施</span>
                                                     }
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-600 whitespace-nowrap">
+                                                <td className="px-4 py-3 text-center text-sm text-[#4A6B6F] whitespace-nowrap">
                                                     {passingMin !== null ? `${passingMin}点` : '-'}
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-600 whitespace-nowrap">
+                                                <td className="px-4 py-3 text-center text-sm text-[#4A6B6F] whitespace-nowrap">
                                                     {passingAvg !== null ? `${passingAvg}点` : '-'}
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-sm text-slate-600 whitespace-nowrap">
+                                                <td className="px-4 py-3 text-center text-sm text-[#4A6B6F] whitespace-nowrap">
                                                     {applicantAvg !== null ? `${applicantAvg}点` : '-'}
                                                 </td>
                                                 <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -434,7 +434,7 @@ export default function DashboardPage() {
                                                             </span>
                                                         )
                                                     ) : (
-                                                        <span className="text-slate-400">-</span>
+                                                        <span className="text-[#7A9B9F]">-</span>
                                                     )}
                                                 </td>
                                             </tr>
@@ -446,12 +446,12 @@ export default function DashboardPage() {
                     </div>
                 </>
             ) : selectedSchoolId ? (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
-                    <p className="text-slate-500">この学校の試験データがまだありません</p>
+                <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-12 text-center">
+                    <p className="text-[#7A9B9F]">この学校の試験データがまだありません</p>
                 </div>
             ) : (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
-                    <p className="text-slate-500">学校を選択してください</p>
+                <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-12 text-center">
+                    <p className="text-[#7A9B9F]">学校を選択してください</p>
                 </div>
             )}
         </div>

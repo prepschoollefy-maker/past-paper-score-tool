@@ -143,7 +143,7 @@ export default function NewRecordPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4DB8C4]"></div>
             </div>
         )
     }
@@ -151,44 +151,44 @@ export default function NewRecordPage() {
     return (
         <div className="max-w-2xl mx-auto space-y-6">
             <div className="flex items-center gap-4">
-                <Link href="/records" className="text-slate-400 hover:text-slate-600 transition-colors">
+                <Link href="/records" className="text-[#7A9B9F] hover:text-[#4DB8C4] transition-colors">
                     <ArrowLeft className="w-6 h-6" />
                 </Link>
-                <h1 className="text-2xl font-bold text-slate-800">得点入力</h1>
+                <h1 className="text-2xl font-bold text-[#1A3E42]">得点入力</h1>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* 学校選択 */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-                    <h2 className="font-semibold text-slate-800">試験を選択</h2>
+                <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-6 space-y-4">
+                    <h2 className="font-semibold text-[#1A3E42]">試験を選択</h2>
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">学校</label>
+                        <label className="block text-sm font-medium text-[#1A3E42] mb-2">学校</label>
                         <div className="relative">
                             <select
                                 value={selectedSchoolId}
                                 onChange={(e) => setSelectedSchoolId(e.target.value)}
                                 required
-                                className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full appearance-none bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 pr-10 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
                             >
                                 <option value="">学校を選択...</option>
                                 {schools.map(school => (
                                     <option key={school.id} value={school.id}>{school.name}</option>
                                 ))}
                             </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#7A9B9F] pointer-events-none" />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">試験回</label>
+                        <label className="block text-sm font-medium text-[#1A3E42] mb-2">試験回</label>
                         <div className="relative">
                             <select
                                 value={selectedExamSessionId}
                                 onChange={(e) => setSelectedExamSessionId(e.target.value)}
                                 required
                                 disabled={!selectedSchoolId}
-                                className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                                className="w-full appearance-none bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 pr-10 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4] disabled:opacity-50"
                             >
                                 <option value="">試験回を選択...</option>
                                 {examSessions.map(es => (
@@ -200,13 +200,13 @@ export default function NewRecordPage() {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">実施日</label>
+                        <label className="block text-sm font-medium text-[#1A3E42] mb-2">実施日</label>
                         <input
                             type="date"
                             value={practiceDate}
                             onChange={(e) => setPracticeDate(e.target.value)}
                             required
-                            className="w-full max-w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full max-w-full bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
                             style={{ maxWidth: '100%' }}
                         />
                     </div>
@@ -214,13 +214,13 @@ export default function NewRecordPage() {
 
                 {/* 得点入力 */}
                 {requiredSubjects.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-                        <h2 className="font-semibold text-slate-800">得点を入力</h2>
+                    <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-6 space-y-4">
+                        <h2 className="font-semibold text-[#1A3E42]">得点を入力</h2>
 
                         <div className="space-y-4">
                             {scores.map((score, index) => (
                                 <div key={score.subject} className="flex items-center gap-4">
-                                    <label className="w-16 text-sm font-medium text-slate-700">
+                                    <label className="w-16 text-sm font-medium text-[#1A3E42]">
                                         {score.subject}
                                     </label>
                                     <div className="flex-1 flex items-center gap-2">
@@ -231,11 +231,11 @@ export default function NewRecordPage() {
                                             value={score.score}
                                             onChange={(e) => handleScoreChange(index, e.target.value)}
                                             required
-                                            className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-center text-lg font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-24 bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-center text-lg font-semibold text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4]"
                                         />
-                                        <span className="text-slate-400">/</span>
-                                        <span className="text-slate-600 font-medium">{score.max_score}</span>
-                                        <span className="ml-auto text-sm text-slate-500">
+                                        <span className="text-[#7A9B9F]">/</span>
+                                        <span className="text-[#4A6B6F] font-medium">{score.max_score}</span>
+                                        <span className="ml-auto text-sm text-[#7A9B9F]">
                                             {score.max_score > 0 ? Math.round((score.score / score.max_score) * 100) : 0}%
                                         </span>
                                     </div>
@@ -244,16 +244,16 @@ export default function NewRecordPage() {
                         </div>
 
                         {/* 合計 */}
-                        <div className="pt-4 border-t border-slate-200">
+                        <div className="pt-4 border-t border-[#D9EEEF]">
                             <div className="flex items-center gap-4">
-                                <span className="w-16 text-sm font-bold text-slate-800">合計</span>
+                                <span className="w-16 text-sm font-bold text-[#1A3E42]">合計</span>
                                 <div className="flex-1 flex items-center gap-2">
-                                    <span className="w-24 text-center text-xl font-bold text-blue-600">
+                                    <span className="w-24 text-center text-xl font-bold text-[#4DB8C4]">
                                         {totalScore}
                                     </span>
-                                    <span className="text-slate-400">/</span>
-                                    <span className="text-slate-600 font-medium">{totalMaxScore}</span>
-                                    <span className="ml-auto text-lg font-bold text-blue-600">
+                                    <span className="text-[#7A9B9F]">/</span>
+                                    <span className="text-[#4A6B6F] font-medium">{totalMaxScore}</span>
+                                    <span className="ml-auto text-lg font-bold text-[#4DB8C4]">
                                         {totalRate}%
                                     </span>
                                 </div>
@@ -264,14 +264,14 @@ export default function NewRecordPage() {
 
                 {/* メモ */}
                 {requiredSubjects.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">メモ（任意）</label>
+                    <div className="bg-white rounded-xl shadow-md border border-[#D9EEEF] p-6">
+                        <label className="block text-sm font-medium text-[#1A3E42] mb-2">メモ（任意）</label>
                         <textarea
                             value={memo}
                             onChange={(e) => setMemo(e.target.value)}
                             rows={3}
                             placeholder="気づいたことなどをメモ..."
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            className="w-full bg-[#F8FCFC] border border-[#D9EEEF] rounded-lg px-4 py-3 text-[#1A3E42] focus:outline-none focus:ring-2 focus:ring-[#4DB8C4] resize-none"
                         />
                     </div>
                 )}
@@ -288,7 +288,7 @@ export default function NewRecordPage() {
                     <button
                         type="submit"
                         disabled={saving}
-                        className="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full py-4 px-6 bg-gradient-to-r from-[#4DB8C4] to-[#3A9AA4] hover:from-[#3A9AA4] hover:to-[#2D8A94] text-white font-semibold rounded-xl shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                         <Save className="w-5 h-5" />
                         {saving ? '保存中...' : '保存する'}
