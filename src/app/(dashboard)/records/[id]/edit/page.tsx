@@ -28,25 +28,39 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
     // 記録の取得
     useEffect(() => {
         async function fetchRecord() {
-            const { data, error } = await supabase
-                .from('practice_records')
-                .select(`
-                    *,
-                    exam_session:exam_sessions(*, school:schools(*)),
-                    practice_scores(*)
-                `)
-                .eq('id', params.id)
-                .single()
+            try {
+                console.log('Fetching record with ID:', params.id)
 
-            if (error) {
-                console.error(error)
-                setError('記録の読み込みに失敗しました')
-                setLoading(false)
-                return
-            }
+                const { data, error } = await supabase
+                    .from('practice_records')
+                    .select(`
+                        *,
+                        exam_session:exam_sessions(*, school:schools(*)),
+                        practice_scores(*)
+                    `)
+                    .eq('id', params.id)
+                    .single()
 
-            if (data) {
+                console.log('Fetched data:', data)
+                console.log('Fetch error:', error)
+
+                if (error) {
+                    console.error('Database error:', error)
+                    setError(`記録の読み込みに失敗しました: ${error.message}`)
+                    setLoading(false)
+                    return
+                }
+
+                if (!data) {
+                    console.error('No data returned')
+                    setError('記録が見つかりませんでした')
+                    setLoading(false)
+                    return
+                }
+
                 const recordData = data as RecordWithDetails
+                console.log('Record data:', recordData)
+
                 setRecord(recordData)
                 setPracticeDate(recordData.practice_date)
                 setMemo(recordData.memo || '')
@@ -72,9 +86,12 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                         }
                     }))
                 }
+            } catch (err) {
+                console.error('Unexpected error:', err)
+                setError(`予期しないエラーが発生しました: ${err}`)
+            } finally {
+                setLoading(false)
             }
-
-            setLoading(false)
         }
 
         fetchRecord()
@@ -148,11 +165,16 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
         )
     }
 
-    if (!record) {
+    if (error || !record) {
         return (
             <div className="max-w-2xl mx-auto">
                 <div className="bg-white rounded-xl shadow-md border border-teal-200 p-12 text-center">
-                    <p className="text-teal-300">記録が見つかりませんでした</p>
+                    <p className="text-teal-700 font-semibold mb-2">
+                        {error || '記録が見つかりませんでした'}
+                    </p>
+                    {error && (
+                        <p className="text-sm text-teal-500 mb-4">ブラウザのコンソールで詳細を確認してください</p>
+                    )}
                     <Link href="/records" className="mt-4 inline-block text-teal-400 hover:text-teal-500">
                         履歴に戻る
                     </Link>
