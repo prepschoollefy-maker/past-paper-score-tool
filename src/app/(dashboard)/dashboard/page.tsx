@@ -345,55 +345,57 @@ export default function DashboardPage() {
                                 <span className="text-teal-300 ml-2">（{selectedSessionLabel}）</span>
                             )}
                         </h2>
-                        <div className="h-80">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={chartData} barCategoryGap="20%">
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
-                                    <YAxis
-                                        domain={[0, Math.ceil(maxScore * 1.1 / 10) * 10]}
-                                        stroke="#94a3b8"
-                                        fontSize={12}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#fff',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: '8px',
-                                        }}
-                                        formatter={(value, name) => [value !== null ? `${value}点` : '-', name]}
-                                    />
-                                    <Legend />
+                        <div className="overflow-x-auto">
+                            <div className="h-80" style={{ minWidth: `${Math.max(chartData.length * 80, 600)}px` }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <ComposedChart data={chartData} barCategoryGap="20%">
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                        <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
+                                        <YAxis
+                                            domain={[0, Math.ceil(maxScore * 1.1 / 10) * 10]}
+                                            stroke="#94a3b8"
+                                            fontSize={12}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#fff',
+                                                border: '1px solid #e2e8f0',
+                                                borderRadius: '8px',
+                                            }}
+                                            formatter={(value, name) => [value !== null ? `${value}点` : '-', name]}
+                                        />
+                                        <Legend />
 
-                                    {/* 生徒の得点（バー） */}
-                                    <Bar
-                                        dataKey="あなたの得点"
-                                        fill="#4DB8C4"
-                                        radius={[4, 4, 0, 0]}
-                                    />
+                                        {/* 生徒の得点（バー） */}
+                                        <Bar
+                                            dataKey="あなたの得点"
+                                            fill="#4DB8C4"
+                                            radius={[4, 4, 0, 0]}
+                                        />
 
-                                    {/* 合格最低点（折れ線） */}
-                                    <Line
-                                        type="monotone"
-                                        dataKey="合格最低点"
-                                        stroke="#ef4444"
-                                        strokeWidth={2}
-                                        strokeDasharray="5 5"
-                                        dot={{ fill: '#ef4444', r: 4 }}
-                                        connectNulls
-                                    />
+                                        {/* 合格最低点（折れ線） */}
+                                        <Line
+                                            type="monotone"
+                                            dataKey="合格最低点"
+                                            stroke="#ef4444"
+                                            strokeWidth={2}
+                                            strokeDasharray="5 5"
+                                            dot={{ fill: '#ef4444', r: 4 }}
+                                            connectNulls
+                                        />
 
-                                    {/* 合格者平均（折れ線） */}
-                                    <Line
-                                        type="monotone"
-                                        dataKey="合格者平均"
-                                        stroke="#7c3aed"
-                                        strokeWidth={2}
-                                        dot={{ fill: '#7c3aed', r: 4 }}
-                                        connectNulls
-                                    />
-                                </ComposedChart>
-                            </ResponsiveContainer>
+                                        {/* 合格者平均（折れ線） */}
+                                        <Line
+                                            type="monotone"
+                                            dataKey="合格者平均"
+                                            stroke="#7c3aed"
+                                            strokeWidth={2}
+                                            dot={{ fill: '#7c3aed', r: 4 }}
+                                            connectNulls
+                                        />
+                                    </ComposedChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
                     </div>
 
