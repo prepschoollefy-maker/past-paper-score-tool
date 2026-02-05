@@ -517,7 +517,7 @@ export default function EditPage() {
                     />
                     <div className="flex gap-2">
                         <button
-                            onClick={handleSearch}
+                            onClick={() => handleSearch()}
                             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                             検索
@@ -615,7 +615,7 @@ export default function EditPage() {
 
                 {filteredData.length === 0 && (
                     <div className="text-center py-12 text-slate-500">
-                        {searchQuery ? '検索結果が見つかりませんでした' : 'データがありません'}
+                        {(searchSchoolName || searchYear || searchSession) ? '検索結果が見つかりませんでした' : 'データがありません'}
                     </div>
                 )}
             </div>
