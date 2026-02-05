@@ -97,7 +97,7 @@ export default function EditPage() {
                     required_subjects(subject, max_score),
                     official_data(subject, passing_min, passer_avg, applicant_avg)
                 `)
-                .limit(10000)  // 上限10000件から取得
+                .range(0, 19999)  // 0から19999まで取得（最大20000件）
 
             if (sessionsError) throw sessionsError
 
