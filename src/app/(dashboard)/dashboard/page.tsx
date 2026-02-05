@@ -247,21 +247,39 @@ export default function DashboardPage() {
                     <div>
                         <label className="block text-sm font-medium text-teal-700 mb-2">学校</label>
                         <div className="relative">
-                            <select
-                                value={selectedSchoolId}
+                            <input
+                                type="text"
+                                list="schools-datalist"
+                                value={schools.find(s => s.id === selectedSchoolId)?.name || ''}
                                 onChange={(e) => {
-                                    setSelectedSchoolId(e.target.value)
-                                    setSelectedSessionLabel('')
-                                    setSelectedSubject('総合')
+                                    const inputValue = e.target.value
+                                    const matchedSchool = schools.find(s => s.name === inputValue)
+                                    if (matchedSchool) {
+                                        setSelectedSchoolId(matchedSchool.id)
+                                        setSelectedSessionLabel('')
+                                        setSelectedSubject('総合')
+                                    } else if (inputValue === '') {
+                                        setSelectedSchoolId('')
+                                        setSelectedSessionLabel('')
+                                        setSelectedSubject('総合')
+                                    }
                                 }}
-                                className="w-full appearance-none bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 pr-10 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
-                            >
-                                <option value="">学校を選択...</option>
+                                onBlur={(e) => {
+                                    // フォーカスを外したときに、リストにない値の場合は空にする
+                                    const inputValue = e.target.value
+                                    const matchedSchool = schools.find(s => s.name === inputValue)
+                                    if (!matchedSchool && inputValue !== '') {
+                                        setSelectedSchoolId('')
+                                    }
+                                }}
+                                placeholder="学校を検索して選択..."
+                                className="w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            />
+                            <datalist id="schools-datalist">
                                 {schools.map(school => (
-                                    <option key={school.id} value={school.id}>{school.name}</option>
+                                    <option key={school.id} value={school.name} />
                                 ))}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-teal-300 pointer-events-none" />
+                            </datalist>
                         </div>
                     </div>
 
