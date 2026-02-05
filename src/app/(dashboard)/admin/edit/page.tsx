@@ -86,20 +86,48 @@ export default function EditPage() {
         setError(null)
 
         try {
-            // 1. 全試験回を取得（ソートなし、後でクライアントサイドでソート）
-            const { data: sessions, error: sessionsError } = await supabase
-                .from('exam_sessions')
-                .select(`
-                    id,
-                    year,
-                    session_label,
-                    schools(id, name),
-                    required_subjects(subject, max_score),
-                    official_data(subject, passing_min, passer_avg, applicant_avg)
-                `)
-                .range(0, 19999)  // 0から19999まで取得（最大20000件）
+            // 1. 全試験回をページネーションで取得
+            let allSessions: any[] = []
+            let pageSize = 1000
+            let page = 0
+            let hasMore = true
 
-            if (sessionsError) throw sessionsError
+            console.log('データ取得開始...')
+
+            while (hasMore) {
+                const start = page * pageSize
+                const end = start + pageSize - 1
+
+                const { data: sessions, error: sessionsError } = await supabase
+                    .from('exam_sessions')
+                    .select(`
+                        id,
+                        year,
+                        session_label,
+                        schools(id, name),
+                        required_subjects(subject, max_score),
+                        official_data(subject, passing_min, passer_avg, applicant_avg)
+                    `)
+                    .range(start, end)
+
+                if (sessionsError) throw sessionsError
+
+                if (!sessions || sessions.length === 0) {
+                    hasMore = false
+                } else {
+                    allSessions = [...allSessions, ...sessions]
+                    console.log(`ページ ${page + 1}: ${sessions.length}件取得 (累計: ${allSessions.length}件)`)
+
+                    // 1000件未満なら最後のページ
+                    if (sessions.length < pageSize) {
+                        hasMore = false
+                    } else {
+                        page++
+                    }
+                }
+            }
+
+            console.log(`全データ取得完了: ${allSessions.length}件`)
 
             // 2. 学校の別名を取得
             const { data: aliases, error: aliasesError } = await supabase
@@ -115,7 +143,7 @@ export default function EditPage() {
             })
 
             // 4. フラット化
-            const flattened: FlattenedRow[] = (sessions || []).map(session => {
+            const flattened: FlattenedRow[] = (allSessions || []).map((session: any) => {
                 const school = Array.isArray(session.schools) ? session.schools[0] : session.schools
                 const subjects = Array.isArray(session.required_subjects) ? session.required_subjects : []
                 const officialData = Array.isArray(session.official_data) ? session.official_data : []
@@ -130,13 +158,13 @@ export default function EditPage() {
                 }
 
                 // 科目配点
-                subjects.forEach(s => {
+                subjects.forEach((s: any) => {
                     const key = `${s.subject}配点` as keyof FlattenedRow
                     row[key] = s.max_score as unknown as number
                 })
 
                 // 総合データ
-                const overall = officialData.find(d => d.subject === '総合')
+                const overall = officialData.find((d: any) => d.subject === '総合')
                 if (overall) {
                     row['合格最低点'] = overall.passing_min as unknown as number
                     row['合格者平均'] = overall.passer_avg as unknown as number
@@ -146,7 +174,7 @@ export default function EditPage() {
                 // 科目別平均データ
                 const subjectNames = ['国語', '算数', '社会', '理科', '英語']
                 subjectNames.forEach(subj => {
-                    const subjData = officialData.find(d => d.subject === subj)
+                    const subjData = officialData.find((d: any) => d.subject === subj)
                     if (subjData) {
                         const passKey = `${subj}合平均` as keyof FlattenedRow
                         const appKey = `${subj}受平均` as keyof FlattenedRow
