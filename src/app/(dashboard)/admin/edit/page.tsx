@@ -427,18 +427,28 @@ export default function EditPage() {
             )}
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="overflow-x-auto">
+                {/* スクロール可能なテーブルコンテナ */}
+                <div className="overflow-auto max-h-[600px]">
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 sticky top-0 z-10">
                             <tr>
-                                {COLUMNS.map(col => (
-                                    <th
-                                        key={col.key}
-                                        className="px-3 py-2 text-left text-xs font-medium text-slate-500 whitespace-nowrap border-b border-slate-200"
-                                    >
-                                        {col.label}
-                                    </th>
-                                ))}
+                                {COLUMNS.map(col => {
+                                    // 列ごとに適切な幅を設定
+                                    let width = 'min-w-[80px]' // デフォルト
+                                    if (col.key === 'schoolName') width = 'min-w-[200px]'
+                                    else if (col.key === 'alias') width = 'min-w-[100px]'
+                                    else if (col.key === 'year') width = 'min-w-[80px]'
+                                    else if (col.key === 'sessionLabel') width = 'min-w-[120px]'
+
+                                    return (
+                                        <th
+                                            key={col.key}
+                                            className={`px-3 py-2 text-left text-xs font-medium text-slate-500 whitespace-nowrap border-b border-slate-200 ${width}`}
+                                        >
+                                            {col.label}
+                                        </th>
+                                    )
+                                })}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
