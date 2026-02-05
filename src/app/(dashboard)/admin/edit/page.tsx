@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader2, Plus, Download } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, Download, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import AddDataModal from '@/components/AddDataModal'
 
@@ -245,6 +245,41 @@ export default function EditPage() {
         setSearchYear('')
         setSearchSession('')
         setFilteredData(data)
+    }
+
+    async function handleDeleteRow(sessionId: string, schoolName: string) {
+        // 確認ダイアログ
+        const confirmed = window.confirm(
+            `${schoolName}のこのデータを削除してもよろしいですか？\n\nこの操作は取り消せません。`
+        )
+
+        if (!confirmed) return
+
+        setSavingCell(sessionId)
+
+        try {
+            // exam_sessionsを削除（関連するrequired_subjectsとofficial_dataも自動削除される前提）
+            const { error: deleteError } = await supabase
+                .from('exam_sessions')
+                .delete()
+                .eq('id', sessionId)
+
+            if (deleteError) throw deleteError
+
+            // ローカルステートから削除
+            const updatedData = data.filter(row => row.sessionId !== sessionId)
+            const updatedFilteredData = filteredData.filter(row => row.sessionId !== sessionId)
+
+            setData(updatedData)
+            setFilteredData(updatedFilteredData)
+
+            setSuccessMessage('データを削除しました')
+            setTimeout(() => setSuccessMessage(null), 2000)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '削除に失敗しました')
+        } finally {
+            setSavingCell(null)
+        }
     }
 
     function handleAddNewRow() {
@@ -701,6 +736,9 @@ export default function EditPage() {
                                         </th>
                                     )
                                 })}
+                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 whitespace-nowrap border-b border-slate-200 min-w-[60px]">
+                                    操作
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
@@ -738,6 +776,15 @@ export default function EditPage() {
                                             </td>
                                         )
                                     })}
+                                    <td className="px-3 py-2 whitespace-nowrap">
+                                        <button
+                                            onClick={() => setNewRow(null)}
+                                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                            title="キャンセル"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </td>
                                 </tr>
                             )}
 
@@ -774,6 +821,20 @@ export default function EditPage() {
                                             </td>
                                         )
                                     })}
+                                    <td className="px-3 py-2 whitespace-nowrap">
+                                        <button
+                                            onClick={() => handleDeleteRow(row.sessionId, row.schoolName)}
+                                            disabled={savingCell === row.sessionId}
+                                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title="削除"
+                                        >
+                                            {savingCell === row.sessionId ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <Trash2 className="w-4 h-4" />
+                                            )}
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
