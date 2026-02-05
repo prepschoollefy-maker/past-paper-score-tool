@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader2, Plus } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, Download } from 'lucide-react'
 import Link from 'next/link'
 import AddDataModal from '@/components/AddDataModal'
 
@@ -70,6 +70,7 @@ export default function EditPage() {
     const [loading, setLoading] = useState(true)
     const [savingCell, setSavingCell] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [successMessage, setSuccessMessage] = useState<string | null>(null)
     const [showAddDataModal, setShowAddDataModal] = useState(false)
 
     const supabase = createClient()
@@ -371,11 +372,69 @@ export default function EditPage() {
                 applySearch(searchQuery, updatedData)
             }
 
+            // 保存成功メッセージを表示
+            setSuccessMessage('保存しました')
+            setTimeout(() => setSuccessMessage(null), 2000)
+
         } catch (err) {
             setError(err instanceof Error ? err.message : '更新に失敗しました')
         } finally {
             setSavingCell(null)
         }
+    }
+
+    function handleExportCSV() {
+        // CSVヘッダー（テンプレート形式）
+        const headers = [
+            '学校名', '別名', '年度', '回',
+            '国語配点', '算数配点', '社会配点', '理科配点', '英語配点',
+            '国語合平均', '国語受平均', '算数合平均', '算数受平均',
+            '社会合平均', '社会受平均', '理科合平均', '理科受平均',
+            '英語合平均', '英語受平均',
+            '合格最低点', '合格者平均', '受験者平均'
+        ]
+
+        // データをCSV形式に変換
+        const rows = filteredData.map(row => [
+            row.schoolName,
+            row.alias || '',
+            row.year,
+            row.sessionLabel,
+            row['国語配点'] ?? '',
+            row['算数配点'] ?? '',
+            row['社会配点'] ?? '',
+            row['理科配点'] ?? '',
+            row['英語配点'] ?? '',
+            row['国語合平均'] ?? '',
+            row['国語受平均'] ?? '',
+            row['算数合平均'] ?? '',
+            row['算数受平均'] ?? '',
+            row['社会合平均'] ?? '',
+            row['社会受平均'] ?? '',
+            row['理科合平均'] ?? '',
+            row['理科受平均'] ?? '',
+            row['英語合平均'] ?? '',
+            row['英語受平均'] ?? '',
+            row['合格最低点'] ?? '',
+            row['合格者平均'] ?? '',
+            row['受験者平均'] ?? ''
+        ])
+
+        // CSVテキストを生成
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.join(','))
+        ].join('\n')
+
+        // BOM付きUTF-8でダウンロード
+        const bom = '\uFEFF'
+        const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `school_data_${new Date().toISOString().split('T')[0]}.csv`
+        link.click()
+        URL.revokeObjectURL(url)
     }
 
     if (loading) {
@@ -395,13 +454,22 @@ export default function EditPage() {
                     </Link>
                     <h1 className="text-2xl font-bold text-slate-800">過去問得点データ編集</h1>
                 </div>
-                <button
-                    onClick={() => setShowAddDataModal(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                >
-                    <Plus className="w-4 h-4" />
-                    試験データ追加
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={handleExportCSV}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                    >
+                        <Download className="w-4 h-4" />
+                        CSV出力
+                    </button>
+                    <button
+                        onClick={() => setShowAddDataModal(true)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        <Plus className="w-4 h-4" />
+                        試験データ追加
+                    </button>
+                </div>
             </div>
 
             {/* 検索ボックス */}
@@ -426,6 +494,12 @@ export default function EditPage() {
                 </div>
             )}
 
+            {successMessage && (
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+                    {successMessage}
+                </div>
+            )}
+
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 {/* スクロール可能なテーブルコンテナ */}
                 <div className="overflow-auto max-h-[600px]">
@@ -436,7 +510,7 @@ export default function EditPage() {
                                     // 列ごとに適切な幅を設定
                                     let width = 'min-w-[80px]' // デフォルト
                                     if (col.key === 'schoolName') width = 'min-w-[200px]'
-                                    else if (col.key === 'alias') width = 'min-w-[100px]'
+                                    else if (col.key === 'alias') width = 'min-w-[150px]'
                                     else if (col.key === 'year') width = 'min-w-[80px]'
                                     else if (col.key === 'sessionLabel') width = 'min-w-[120px]'
 
