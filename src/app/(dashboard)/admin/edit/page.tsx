@@ -39,10 +39,10 @@ interface FlattenedRow {
 }
 
 const COLUMNS = [
-    { key: 'schoolName', label: '学校名', editable: false },
-    { key: 'alias', label: '別名', editable: false },
-    { key: 'year', label: '年度', editable: false },
-    { key: 'sessionLabel', label: '回', editable: false },
+    { key: 'schoolName', label: '学校名', editable: true },
+    { key: 'alias', label: '別名', editable: true },
+    { key: 'year', label: '年度', editable: true },
+    { key: 'sessionLabel', label: '回', editable: true },
     { key: '算数配点', label: '算数配点', editable: true },
     { key: '国語配点', label: '国語配点', editable: true },
     { key: '理科配点', label: '理科配点', editable: true },
@@ -209,6 +209,56 @@ export default function EditPage() {
         setSavingCell(cellKey)
 
         try {
+            // 学校名の更新
+            if (columnKey === 'schoolName') {
+                if (!newValue.trim()) {
+                    throw new Error('学校名を入力してください')
+                }
+                await supabase
+                    .from('schools')
+                    .update({ name: newValue.trim() })
+                    .eq('id', row.schoolId)
+            }
+            // 別名の更新
+            else if (columnKey === 'alias') {
+                // 既存の別名を削除
+                await supabase
+                    .from('school_aliases')
+                    .delete()
+                    .eq('school_id', row.schoolId)
+
+                // 新しい別名を追加（空でない場合）
+                if (newValue.trim()) {
+                    await supabase
+                        .from('school_aliases')
+                        .insert({
+                            school_id: row.schoolId,
+                            alias: newValue.trim()
+                        })
+                }
+            }
+            // 年度の更新
+            else if (columnKey === 'year') {
+                const yearValue = parseInt(newValue)
+                if (isNaN(yearValue) || yearValue < 2000 || yearValue > 2099) {
+                    throw new Error('有効な年度を入力してください（2000-2099）')
+                }
+                await supabase
+                    .from('exam_sessions')
+                    .update({ year: yearValue })
+                    .eq('id', row.sessionId)
+            }
+            // 回ラベルの更新
+            else if (columnKey === 'sessionLabel') {
+                if (!newValue.trim()) {
+                    throw new Error('回ラベルを入力してください')
+                }
+                await supabase
+                    .from('exam_sessions')
+                    .update({ session_label: newValue.trim() })
+                    .eq('id', row.sessionId)
+            }
+
             const numValue = newValue === '' ? null : parseFloat(newValue)
 
             // 配点の更新
@@ -302,9 +352,19 @@ export default function EditPage() {
             const updatedData = [...data]
             const actualRowIndex = data.findIndex(r => r.sessionId === row.sessionId)
             if (actualRowIndex !== -1) {
+                // 年度は数値、その他の基本フィールドは文字列、数値フィールドはnullか数値
+                let finalValue: string | number | undefined
+                if (columnKey === 'year') {
+                    finalValue = parseInt(newValue)
+                } else if (['schoolName', 'alias', 'sessionLabel'].includes(columnKey)) {
+                    finalValue = newValue
+                } else {
+                    finalValue = numValue === null ? undefined : numValue
+                }
+
                 updatedData[actualRowIndex] = {
                     ...updatedData[actualRowIndex],
-                    [columnKey]: numValue === null ? undefined : numValue,
+                    [columnKey]: finalValue,
                 }
                 setData(updatedData)
                 // 検索フィルターを再適用
