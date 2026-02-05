@@ -66,7 +66,9 @@ const COLUMNS = [
 export default function EditPage() {
     const [data, setData] = useState<FlattenedRow[]>([])
     const [filteredData, setFilteredData] = useState<FlattenedRow[]>([])
-    const [searchQuery, setSearchQuery] = useState('')
+    const [searchSchoolName, setSearchSchoolName] = useState('')
+    const [searchYear, setSearchYear] = useState('')
+    const [searchSession, setSearchSession] = useState('')
     const [loading, setLoading] = useState(true)
     const [savingCell, setSavingCell] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -95,6 +97,7 @@ export default function EditPage() {
                     required_subjects(subject, max_score),
                     official_data(subject, passing_min, passer_avg, applicant_avg)
                 `)
+                .limit(10000)  // 上限10000件から取得
 
             if (sessionsError) throw sessionsError
 
@@ -178,28 +181,41 @@ export default function EditPage() {
         }
     }
 
-    function applySearch(query: string, dataToFilter: FlattenedRow[] = data) {
-        if (!query.trim()) {
-            setFilteredData(dataToFilter)
-            return
+    function handleSearch(dataToFilter: FlattenedRow[] = data) {
+        let filtered = dataToFilter
+
+        // 学校名でフィルター
+        if (searchSchoolName.trim()) {
+            const lower = searchSchoolName.toLowerCase()
+            filtered = filtered.filter(row =>
+                row.schoolName.toLowerCase().includes(lower) ||
+                row.alias.toLowerCase().includes(lower)
+            )
         }
 
-        const lowerQuery = query.toLowerCase()
-        const filtered = dataToFilter.filter(row => {
-            return (
-                row.schoolName.toLowerCase().includes(lowerQuery) ||
-                row.alias.toLowerCase().includes(lowerQuery) ||
-                row.year.toString().includes(lowerQuery) ||
-                row.sessionLabel.toLowerCase().includes(lowerQuery)
+        // 年度でフィルター
+        if (searchYear.trim()) {
+            filtered = filtered.filter(row =>
+                row.year.toString().includes(searchYear)
             )
-        })
+        }
+
+        // 回でフィルター
+        if (searchSession.trim()) {
+            const lower = searchSession.toLowerCase()
+            filtered = filtered.filter(row =>
+                row.sessionLabel.toLowerCase().includes(lower)
+            )
+        }
+
         setFilteredData(filtered)
     }
 
-    function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
-        const query = e.target.value
-        setSearchQuery(query)
-        applySearch(query)
+    function handleClearSearch() {
+        setSearchSchoolName('')
+        setSearchYear('')
+        setSearchSession('')
+        setFilteredData(data)
     }
 
     async function handleCellEdit(sessionId: string, columnKey: string, newValue: string) {
@@ -369,7 +385,7 @@ export default function EditPage() {
                 }
                 setData(updatedData)
                 // 検索フィルターを再適用
-                applySearch(searchQuery, updatedData)
+                handleSearch(updatedData)
             }
 
             // 保存成功メッセージを表示
@@ -474,14 +490,47 @@ export default function EditPage() {
 
             {/* 検索ボックス */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                <input
-                    type="text"
-                    placeholder="学校名、別名、年度、回で検索..."
-                    value={searchQuery}
-                    onChange={handleSearchChange}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                {searchQuery && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <input
+                        type="text"
+                        placeholder="学校名で検索..."
+                        value={searchSchoolName}
+                        onChange={(e) => setSearchSchoolName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                        className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <input
+                        type="text"
+                        placeholder="年度で検索..."
+                        value={searchYear}
+                        onChange={(e) => setSearchYear(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                        className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <input
+                        type="text"
+                        placeholder="回で検索..."
+                        value={searchSession}
+                        onChange={(e) => setSearchSession(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                        className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleSearch}
+                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            検索
+                        </button>
+                        <button
+                            onClick={handleClearSearch}
+                            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+                        >
+                            クリア
+                        </button>
+                    </div>
+                </div>
+                {(searchSchoolName || searchYear || searchSession) && (
                     <p className="text-sm text-slate-500 mt-2">
                         {filteredData.length}件の結果が見つかりました
                     </p>
