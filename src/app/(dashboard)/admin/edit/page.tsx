@@ -73,7 +73,8 @@ export default function EditPage() {
     const [savingCell, setSavingCell] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
-    const [showAddDataModal, setShowAddDataModal] = useState(false)
+    const [newRow, setNewRow] = useState<FlattenedRow | null>(null)
+    const [newRowId, setNewRowId] = useState<number>(0)
 
     const supabase = createClient()
 
@@ -244,6 +245,105 @@ export default function EditPage() {
         setSearchYear('')
         setSearchSession('')
         setFilteredData(data)
+    }
+
+    function handleAddNewRow() {
+        const tempId = `temp-${newRowId}`
+        setNewRowId(prev => prev + 1)
+
+        const emptyRow: FlattenedRow = {
+            sessionId: tempId,
+            schoolId: '',
+            schoolName: '',
+            alias: '',
+            year: new Date().getFullYear(),
+            sessionLabel: '',
+        }
+
+        setNewRow(emptyRow)
+    }
+
+    async function handleNewRowCellEdit(columnKey: string, newValue: string) {
+        if (!newRow) return
+
+        const cellKey = `${newRow.sessionId}-${columnKey}`
+        setSavingCell(cellKey)
+
+        try {
+            // 新規行のローカル状態を更新
+            const updatedRow = { ...newRow, [columnKey]: columnKey === 'year' ? parseInt(newValue) || new Date().getFullYear() : newValue }
+            setNewRow(updatedRow)
+
+            // 必須項目（学校名、年度、回）が全て入力されたらDBに保存
+            if (updatedRow.schoolName && updatedRow.year && updatedRow.sessionLabel) {
+                // 1. 学校を検索または作成
+                let schoolId = updatedRow.schoolId
+
+                if (!schoolId) {
+                    const { data: existingSchools } = await supabase
+                        .from('schools')
+                        .select('id')
+                        .eq('name', updatedRow.schoolName)
+                        .limit(1)
+
+                    if (existingSchools && existingSchools.length > 0) {
+                        schoolId = existingSchools[0].id
+                    } else {
+                        const { data: newSchool, error: schoolError } = await supabase
+                            .from('schools')
+                            .insert({ name: updatedRow.schoolName })
+                            .select('id')
+                            .single()
+
+                        if (schoolError) throw schoolError
+                        schoolId = newSchool.id
+                    }
+                }
+
+                // 2. exam_sessionを作成
+                const { data: newSession, error: sessionError } = await supabase
+                    .from('exam_sessions')
+                    .insert({
+                        school_id: schoolId,
+                        year: updatedRow.year,
+                        session_label: updatedRow.sessionLabel
+                    })
+                    .select('id')
+                    .single()
+
+                if (sessionError) throw sessionError
+
+                // 3. 別名がある場合は保存
+                if (updatedRow.alias) {
+                    await supabase
+                        .from('school_aliases')
+                        .insert({
+                            school_id: schoolId,
+                            alias: updatedRow.alias
+                        })
+                }
+
+                // 4. 新しいセッションIDでローカル状態を更新
+                const savedRow: FlattenedRow = {
+                    ...updatedRow,
+                    sessionId: newSession.id,
+                    schoolId: schoolId
+                }
+
+                // dataとfilteredDataに追加
+                const updatedData = [...data, savedRow]
+                setData(updatedData)
+                setFilteredData([...filteredData, savedRow])
+                setNewRow(null)
+
+                setSuccessMessage('新しいデータを追加しました')
+                setTimeout(() => setSuccessMessage(null), 2000)
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '保存に失敗しました')
+        } finally {
+            setSavingCell(null)
+        }
     }
 
     async function handleCellEdit(sessionId: string, columnKey: string, newValue: string) {
@@ -506,13 +606,6 @@ export default function EditPage() {
                         <Download className="w-4 h-4" />
                         CSV出力
                     </button>
-                    <button
-                        onClick={() => setShowAddDataModal(true)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                    >
-                        <Plus className="w-4 h-4" />
-                        試験データ追加
-                    </button>
                 </div>
             </div>
 
@@ -637,6 +730,58 @@ export default function EditPage() {
                                     })}
                                 </tr>
                             ))}
+
+                            {/* 新規行 */}
+                            {newRow && (
+                                <tr className="bg-blue-50 hover:bg-blue-100">
+                                    {COLUMNS.map(col => {
+                                        const value = newRow[col.key as keyof FlattenedRow]
+                                        const cellKey = `${newRow.sessionId}-${col.key}`
+                                        const isSaving = savingCell === cellKey
+
+                                        return (
+                                            <td key={col.key} className="px-3 py-2 whitespace-nowrap">
+                                                {col.editable ? (
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            defaultValue={value ?? ''}
+                                                            onBlur={(e) => handleNewRowCellEdit(col.key, e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.currentTarget.blur()
+                                                                }
+                                                            }}
+                                                            placeholder={col.key === 'schoolName' ? '学校名（必須）' : col.key === 'year' ? '年度（必須）' : col.key === 'sessionLabel' ? '回（必須）' : ''}
+                                                            className="w-full px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                                        />
+                                                        {isSaving && (
+                                                            <Loader2 className="w-4 h-4 animate-spin text-blue-600 absolute right-2 top-1/2 -translate-y-1/2" />
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-800">{value ?? '-'}</span>
+                                                )}
+                                            </td>
+                                        )
+                                    })}
+                                </tr>
+                            )}
+
+                            {/* 新規行追加ボタン */}
+                            {!newRow && (
+                                <tr>
+                                    <td colSpan={COLUMNS.length} className="px-3 py-3">
+                                        <button
+                                            onClick={handleAddNewRow}
+                                            className="w-full px-4 py-2 text-blue-600 border border-blue-300 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <Plus className="w-4 h-4" />
+                                            新規行を追加
+                                        </button>
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -647,13 +792,5 @@ export default function EditPage() {
                     </div>
                 )}
             </div>
-
-            {/* モーダル */}
-            <AddDataModal
-                isOpen={showAddDataModal}
-                onClose={() => setShowAddDataModal(false)}
-                onSuccess={() => fetchData()}
-            />
-        </div>
-    )
+            )
 }
