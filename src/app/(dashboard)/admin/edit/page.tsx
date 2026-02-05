@@ -792,5 +792,6 @@ export default function EditPage() {
                     </div>
                 )}
             </div>
-            )
+        </div>
+    )
 }
