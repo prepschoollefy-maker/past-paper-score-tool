@@ -22,6 +22,8 @@ interface ExamSessionWithData {
 export default function DashboardPage() {
     const [schools, setSchools] = useState<School[]>([])
     const [selectedSchoolId, setSelectedSchoolId] = useState<string>('')
+    const [schoolSearchQuery, setSchoolSearchQuery] = useState<string>('')
+    const [showSchoolDropdown, setShowSchoolDropdown] = useState<boolean>(false)
     const [sessionLabels, setSessionLabels] = useState<string[]>([])
     const [selectedSessionLabel, setSelectedSessionLabel] = useState<string>('')
     const [examData, setExamData] = useState<ExamSessionWithData[]>([])
@@ -249,37 +251,49 @@ export default function DashboardPage() {
                         <div className="relative">
                             <input
                                 type="text"
-                                list="schools-datalist"
-                                value={schools.find(s => s.id === selectedSchoolId)?.name || ''}
+                                value={schoolSearchQuery}
                                 onChange={(e) => {
-                                    const inputValue = e.target.value
-                                    const matchedSchool = schools.find(s => s.name === inputValue)
-                                    if (matchedSchool) {
-                                        setSelectedSchoolId(matchedSchool.id)
-                                        setSelectedSessionLabel('')
-                                        setSelectedSubject('総合')
-                                    } else if (inputValue === '') {
-                                        setSelectedSchoolId('')
-                                        setSelectedSessionLabel('')
-                                        setSelectedSubject('総合')
-                                    }
+                                    setSchoolSearchQuery(e.target.value)
+                                    setShowSchoolDropdown(true)
                                 }}
-                                onBlur={(e) => {
-                                    // フォーカスを外したときに、リストにない値の場合は空にする
-                                    const inputValue = e.target.value
-                                    const matchedSchool = schools.find(s => s.name === inputValue)
-                                    if (!matchedSchool && inputValue !== '') {
-                                        setSelectedSchoolId('')
-                                    }
+                                onFocus={() => setShowSchoolDropdown(true)}
+                                onBlur={() => {
+                                    // 少し遅延させてクリックイベントを処理できるようにする
+                                    setTimeout(() => setShowSchoolDropdown(false), 200)
                                 }}
-                                placeholder="学校を検索して選択..."
+                                placeholder="学校を検索..."
                                 className="w-full bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
                             />
-                            <datalist id="schools-datalist">
-                                {schools.map(school => (
-                                    <option key={school.id} value={school.name} />
-                                ))}
-                            </datalist>
+                            {showSchoolDropdown && (
+                                <div className="absolute z-10 w-full mt-1 bg-white border border-teal-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                                    {schools
+                                        .filter(school =>
+                                            school.name.toLowerCase().includes(schoolSearchQuery.toLowerCase())
+                                        )
+                                        .map(school => (
+                                            <button
+                                                key={school.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedSchoolId(school.id)
+                                                    setSchoolSearchQuery(school.name)
+                                                    setShowSchoolDropdown(false)
+                                                    setSelectedSessionLabel('')
+                                                    setSelectedSubject('総合')
+                                                }}
+                                                className="w-full text-left px-4 py-2 hover:bg-teal-50 text-teal-700"
+                                            >
+                                                {school.name}
+                                            </button>
+                                        ))
+                                    }
+                                    {schools.filter(school =>
+                                        school.name.toLowerCase().includes(schoolSearchQuery.toLowerCase())
+                                    ).length === 0 && (
+                                            <div className="px-4 py-2 text-teal-300">該当する学校がありません</div>
+                                        )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
