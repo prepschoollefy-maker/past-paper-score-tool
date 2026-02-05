@@ -185,7 +185,7 @@ export default function AddDataModal({ isOpen, onClose, onSuccess }: AddDataModa
             }
 
             // 科目別平均を追加
-            const subjectNames = ['算数', '国語', '理科', '社会', '英語']
+            const subjectNames = ['国語', '算数', '社会', '理科', '英語']
             for (const subj of subjectNames) {
                 const passerKey = `${subj}合平均` as keyof typeof subjectAvgs
                 const applicantKey = `${subj}受平均` as keyof typeof subjectAvgs
@@ -336,7 +336,7 @@ export default function AddDataModal({ isOpen, onClose, onSuccess }: AddDataModa
                 <div>
                     <h3 className="font-semibold text-slate-800 mb-3">3. 科目配点</h3>
                     <div className="grid grid-cols-2 gap-4">
-                        {(['算数', '国語', '理科', '社会', '英語'] as const).map(subj => (
+                        {(['国語', '算数', '社会', '理科', '英語'] as const).map(subj => (
                             <div key={subj}>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">
                                     {subj}
@@ -406,7 +406,7 @@ export default function AddDataModal({ isOpen, onClose, onSuccess }: AddDataModa
                         5. 科目別平均（任意・詳細）
                     </summary>
                     <div className="mt-4 space-y-4">
-                        {(['算数', '国語', '理科', '社会', '英語'] as const).map(subj => (
+                        {(['国語', '算数', '社会', '理科', '英語'] as const).map(subj => (
                             <div key={subj} className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">

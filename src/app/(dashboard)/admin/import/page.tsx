@@ -51,10 +51,10 @@ export default function ImportPage() {
 
             // 科目配点
             const subjectCols = [
-                { name: '算数', scoreCol: '算数配点', passCol: '算数合平均', appCol: '算数受平均' },
                 { name: '国語', scoreCol: '国語配点', passCol: '国語合平均', appCol: '国語受平均' },
-                { name: '理科', scoreCol: '理科配点', passCol: '理科合平均', appCol: '理科受平均' },
+                { name: '算数', scoreCol: '算数配点', passCol: '算数合平均', appCol: '算数受平均' },
                 { name: '社会', scoreCol: '社会配点', passCol: '社会合平均', appCol: '社会受平均' },
+                { name: '理科', scoreCol: '理科配点', passCol: '理科合平均', appCol: '理科受平均' },
                 { name: '英語', scoreCol: '英語配点', passCol: '英語合平均', appCol: '英語受平均' },
             ]
 

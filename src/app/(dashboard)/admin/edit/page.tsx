@@ -140,7 +140,7 @@ export default function EditPage() {
                 }
 
                 // 科目別平均データ
-                const subjectNames = ['算数', '国語', '理科', '社会', '英語']
+                const subjectNames = ['国語', '算数', '社会', '理科', '英語']
                 subjectNames.forEach(subj => {
                     const subjData = officialData.find(d => d.subject === subj)
                     if (subjData) {
@@ -267,7 +267,7 @@ export default function EditPage() {
             }
             // 科目別平均の更新
             else {
-                const subjects = ['算数', '国語', '理科', '社会', '英語']
+                const subjects = ['国語', '算数', '社会', '理科', '英語']
                 const subject = subjects.find(s => columnKey.startsWith(s))
 
                 if (subject) {
