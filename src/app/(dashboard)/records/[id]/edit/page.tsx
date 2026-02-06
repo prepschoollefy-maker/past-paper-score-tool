@@ -12,7 +12,7 @@ interface RecordWithDetails extends Omit<PracticeRecord, 'practice_scores'> {
     practice_scores?: { id: string; subject: string; score: number; max_score: number; practice_record_id: string }[]
 }
 
-export default function EditRecordPage({ params }: { params: { id: string } }) {
+export default function EditRecordPage({ params }: { params: Promise<{ id: string }> }) {
     const [record, setRecord] = useState<RecordWithDetails | null>(null)
     const [requiredSubjects, setRequiredSubjects] = useState<RequiredSubject[]>([])
     const [practiceDate, setPracticeDate] = useState<string>('')
@@ -21,15 +21,27 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [recordId, setRecordId] = useState<string | null>(null)
 
     const supabase = createClient()
     const router = useRouter()
 
+    // パラメータの取得
+    useEffect(() => {
+        async function getParams() {
+            const resolvedParams = await params
+            setRecordId(resolvedParams.id)
+        }
+        getParams()
+    }, [params])
+
     // 記録の取得
     useEffect(() => {
+        if (!recordId) return
+
         async function fetchRecord() {
             try {
-                console.log('Fetching record with ID:', params.id)
+                console.log('Fetching record with ID:', recordId)
 
                 const { data, error } = await supabase
                     .from('practice_records')
@@ -38,7 +50,7 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                         exam_session:exam_sessions(*, school:schools(*)),
                         practice_scores(*)
                     `)
-                    .eq('id', params.id)
+                    .eq('id', recordId)
                     .single()
 
                 console.log('Fetched data:', data)
@@ -95,7 +107,7 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
         }
 
         fetchRecord()
-    }, [params.id])
+    }, [recordId])
 
     const handleScoreChange = (index: number, value: string) => {
         const newScores = [...scores]
@@ -109,6 +121,12 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
         setError(null)
         setSaving(true)
 
+        if (!recordId) {
+            setError('記録IDが見つかりません')
+            setSaving(false)
+            return
+        }
+
         try {
             // 演習記録を更新
             const { error: recordError } = await supabase
@@ -117,7 +135,7 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
                     practice_date: practiceDate,
                     memo: memo || null,
                 })
-                .eq('id', params.id)
+                .eq('id', recordId)
 
             if (recordError) throw recordError
 
@@ -125,13 +143,13 @@ export default function EditRecordPage({ params }: { params: { id: string } }) {
             const { error: deleteError } = await supabase
                 .from('practice_scores')
                 .delete()
-                .eq('practice_record_id', params.id)
+                .eq('practice_record_id', recordId)
 
             if (deleteError) throw deleteError
 
             // 新しいスコアを挿入
             const scoreInserts = scores.map(s => ({
-                practice_record_id: params.id,
+                practice_record_id: recordId,
                 subject: s.subject,
                 score: s.score,
                 max_score: s.max_score,
