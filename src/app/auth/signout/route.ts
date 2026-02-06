@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-export async function POST() {
+export async function POST(request: Request) {
     const supabase = await createClient()
     await supabase.auth.signOut()
-    return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:3000'))
+    const url = new URL(request.url)
+    return NextResponse.redirect(new URL('/login', url.origin))
 }
 
 export async function GET(request: Request) {
