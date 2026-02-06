@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { LogOut, Plus, History, LayoutDashboard, Settings } from 'lucide-react'
+import { signOut } from '@/app/actions/auth'
 
 export default async function DashboardLayout({
     children,
@@ -60,7 +61,7 @@ export default async function DashboardLayout({
                             <span className="text-sm text-teal-300 hidden sm:block">
                                 {profile?.name || user.email}
                             </span>
-                            <form action="/auth/signout" method="post">
+                            <form action={signOut}>
                                 <button
                                     type="submit"
                                     className="flex items-center gap-2 text-teal-800 hover:text-red-500 transition-colors"
