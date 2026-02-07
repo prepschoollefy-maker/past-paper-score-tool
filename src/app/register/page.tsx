@@ -133,63 +133,59 @@ export default function RegisterPage() {
 
                     <form onSubmit={handleRegister} className="space-y-5">
                         {/* メールアドレス */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className={labelClass}>
-                                    メールアドレス <span className="text-red-400">*</span>
-                                </label>
-                                <input
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => updateField('email', e.target.value)}
-                                    required
-                                    className={inputClass}
-                                    placeholder="example@email.com"
-                                />
-                            </div>
-                            <div>
-                                <label className={labelClass}>
-                                    メールアドレス確認 <span className="text-red-400">*</span>
-                                </label>
-                                <input
-                                    type="email"
-                                    value={formData.emailConfirm}
-                                    onChange={(e) => updateField('emailConfirm', e.target.value)}
-                                    required
-                                    className={inputClass}
-                                    placeholder="再入力"
-                                />
-                            </div>
+                        <div>
+                            <label className={labelClass}>
+                                メールアドレス <span className="text-red-400">*</span>
+                            </label>
+                            <input
+                                type="email"
+                                value={formData.email}
+                                onChange={(e) => updateField('email', e.target.value)}
+                                required
+                                className={inputClass}
+                                placeholder="example@email.com"
+                            />
+                        </div>
+                        <div>
+                            <label className={labelClass}>
+                                メールアドレス確認 <span className="text-red-400">*</span>
+                            </label>
+                            <input
+                                type="email"
+                                value={formData.emailConfirm}
+                                onChange={(e) => updateField('emailConfirm', e.target.value)}
+                                required
+                                className={inputClass}
+                                placeholder="メールアドレスを再入力"
+                            />
                         </div>
 
                         {/* パスワード */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className={labelClass}>
-                                    パスワード <span className="text-red-400">*</span>
-                                </label>
-                                <input
-                                    type="password"
-                                    value={formData.password}
-                                    onChange={(e) => updateField('password', e.target.value)}
-                                    required
-                                    className={inputClass}
-                                    placeholder="6文字以上"
-                                />
-                            </div>
-                            <div>
-                                <label className={labelClass}>
-                                    パスワード確認 <span className="text-red-400">*</span>
-                                </label>
-                                <input
-                                    type="password"
-                                    value={formData.passwordConfirm}
-                                    onChange={(e) => updateField('passwordConfirm', e.target.value)}
-                                    required
-                                    className={inputClass}
-                                    placeholder="再入力"
-                                />
-                            </div>
+                        <div>
+                            <label className={labelClass}>
+                                パスワード <span className="text-red-400">*</span>
+                            </label>
+                            <input
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) => updateField('password', e.target.value)}
+                                required
+                                className={inputClass}
+                                placeholder="6文字以上"
+                            />
+                        </div>
+                        <div>
+                            <label className={labelClass}>
+                                パスワード確認 <span className="text-red-400">*</span>
+                            </label>
+                            <input
+                                type="password"
+                                value={formData.passwordConfirm}
+                                onChange={(e) => updateField('passwordConfirm', e.target.value)}
+                                required
+                                className={inputClass}
+                                placeholder="パスワードを再入力"
+                            />
                         </div>
 
                         {/* 区切り線 */}
