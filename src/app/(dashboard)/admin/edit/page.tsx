@@ -632,6 +632,11 @@ export default function EditPage() {
                         <ArrowLeft className="w-6 h-6" />
                     </Link>
                     <h1 className="text-2xl font-bold text-slate-800">過去問得点データ編集</h1>
+                    {successMessage && (
+                        <span className="text-sm text-green-600 font-medium">
+                            {successMessage}
+                        </span>
+                    )}
                 </div>
                 <div className="flex gap-3">
                     <button
@@ -704,12 +709,6 @@ export default function EditPage() {
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
                     {error}
-                </div>
-            )}
-
-            {successMessage && (
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-                    {successMessage}
                 </div>
             )}
 
