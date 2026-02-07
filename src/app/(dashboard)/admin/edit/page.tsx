@@ -43,24 +43,24 @@ const COLUMNS = [
     { key: 'alias', label: '別名', editable: true },
     { key: 'year', label: '年度', editable: true },
     { key: 'sessionLabel', label: '回', editable: true },
-    { key: '算数配点', label: '算数配点', editable: true },
     { key: '国語配点', label: '国語配点', editable: true },
-    { key: '理科配点', label: '理科配点', editable: true },
+    { key: '算数配点', label: '算数配点', editable: true },
     { key: '社会配点', label: '社会配点', editable: true },
+    { key: '理科配点', label: '理科配点', editable: true },
     { key: '英語配点', label: '英語配点', editable: true },
+    { key: '国語合平均', label: '国語合平均', editable: true },
+    { key: '国語受平均', label: '国語受平均', editable: true },
+    { key: '算数合平均', label: '算数合平均', editable: true },
+    { key: '算数受平均', label: '算数受平均', editable: true },
+    { key: '社会合平均', label: '社会合平均', editable: true },
+    { key: '社会受平均', label: '社会受平均', editable: true },
+    { key: '理科合平均', label: '理科合平均', editable: true },
+    { key: '理科受平均', label: '理科受平均', editable: true },
+    { key: '英語合平均', label: '英語合平均', editable: true },
+    { key: '英語受平均', label: '英語受平均', editable: true },
     { key: '合格最低点', label: '合格最低点', editable: true },
     { key: '合格者平均', label: '合格者平均', editable: true },
     { key: '受験者平均', label: '受験者平均', editable: true },
-    { key: '算数合平均', label: '算数合平均', editable: true },
-    { key: '算数受平均', label: '算数受平均', editable: true },
-    { key: '国語合平均', label: '国語合平均', editable: true },
-    { key: '国語受平均', label: '国語受平均', editable: true },
-    { key: '理科合平均', label: '理科合平均', editable: true },
-    { key: '理科受平均', label: '理科受平均', editable: true },
-    { key: '社会合平均', label: '社会合平均', editable: true },
-    { key: '社会受平均', label: '社会受平均', editable: true },
-    { key: '英語合平均', label: '英語合平均', editable: true },
-    { key: '英語受平均', label: '英語受平均', editable: true },
 ] as const
 
 export default function EditPage() {
@@ -573,7 +573,7 @@ export default function EditPage() {
             '合格最低点', '合格者平均', '受験者平均'
         ]
 
-        // データをCSV形式に変換
+        // データをCSV形式に変換（列順序をテンプレートと一致）
         const rows = filteredData.map(row => [
             row.schoolName,
             row.alias || '',
