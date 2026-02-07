@@ -76,6 +76,10 @@ export default function EditPage() {
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
     const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set())
     const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
+    const [addingSessionForSchool, setAddingSessionForSchool] = useState<string | null>(null)
+    const [newSessionData, setNewSessionData] = useState<Partial<FlattenedRow>>({})
+    const [showNewSchoolModal, setShowNewSchoolModal] = useState(false)
+    const [newSchoolName, setNewSchoolName] = useState('')
 
     const supabase = createClient()
 
@@ -386,6 +390,93 @@ export default function EditPage() {
         }
     }
 
+    async function handleAddSession(schoolId: string) {
+        if (!newSessionData.year || !newSessionData.sessionLabel) {
+            setError('年度と回を入力してください')
+            return
+        }
+
+        setSavingCell('new-session')
+        try {
+            // exam_sessionを作成
+            const { data: newSession, error: sessionError } = await supabase
+                .from('exam_sessions')
+                .insert({
+                    school_id: schoolId,
+                    year: newSessionData.year,
+                    session_label: newSessionData.sessionLabel
+                })
+                .select('id')
+                .single()
+
+            if (sessionError) throw sessionError
+
+            // 科目配点を追加
+            const subjectScores = ['国語配点', '算数配点', '社会配点', '理科配点', '英語配点']
+            const requiredSubjects = subjectScores
+                .map(key => {
+                    const value = newSessionData[key]
+                    if (value) {
+                        return {
+                            exam_session_id: newSession.id,
+                            subject: key.replace('配点', ''),
+                            max_score: value as number
+                        }
+                    }
+                    return null
+                })
+                .filter(Boolean)
+
+            if (requiredSubjects.length > 0) {
+                await supabase.from('required_subjects').insert(requiredSubjects)
+            }
+
+            // リフレッシュ
+            await fetchData()
+            setAddingSessionForSchool(null)
+            setNewSessionData({})
+            setSuccessMessage('新しい試験回を追加しました')
+            setTimeout(() => setSuccessMessage(null), 2000)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '追加に失敗しました')
+        } finally {
+            setSavingCell(null)
+        }
+    }
+
+    async function handleAddNewSchool() {
+        if (!newSchoolName.trim()) {
+            setError('学校名を入力してください')
+            return
+        }
+
+        setSavingCell('new-school')
+        try {
+            // 学校を作成
+            const { data: newSchool, error: schoolError } = await supabase
+                .from('schools')
+                .insert({ name: newSchoolName.trim() })
+                .select('id')
+                .single()
+
+            if (schoolError) throw schoolError
+
+            // リフレッシュ
+            await fetchData()
+            setShowNewSchoolModal(false)
+            setNewSchoolName('')
+            setSuccessMessage('新しい学校を追加しました')
+            setTimeout(() => setSuccessMessage(null), 2000)
+
+            // 新しい学校を自動展開
+            setExpandedSchools(prev => new Set([...prev, newSchool.id]))
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '追加に失敗しました')
+        } finally {
+            setSavingCell(null)
+        }
+    }
+
     async function handleDeleteSession(sessionId: string, schoolName: string) {
         const confirmed = window.confirm(
             `${schoolName}のこのデータを削除してもよろしいですか？\n\nこの操作は取り消せません。`
@@ -555,6 +646,13 @@ export default function EditPage() {
                 </div>
                 <div className="flex gap-3">
                     <button
+                        onClick={() => setShowNewSchoolModal(true)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        <Plus className="w-4 h-4" />
+                        新しい学校を追加
+                    </button>
+                    <button
                         onClick={handleExportCSV}
                         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
                     >
@@ -640,6 +738,66 @@ export default function EditPage() {
                             {/* セッションリスト */}
                             {isExpanded && (
                                 <div className="border-t border-slate-200">
+                                    {/* 新しい試験回を追加ボタン */}
+                                    <div className="p-4 border-b border-slate-100">
+                                        {addingSessionForSchool === group.schoolId ? (
+                                            <div className="space-y-3">
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">年度 *</label>
+                                                        <input
+                                                            type="number"
+                                                            placeholder="2025"
+                                                            value={newSessionData.year || ''}
+                                                            onChange={(e) => setNewSessionData(prev => ({ ...prev, year: parseInt(e.target.value) || undefined }))}
+                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">回 *</label>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="第1回"
+                                                            value={newSessionData.sessionLabel || ''}
+                                                            onChange={(e) => setNewSessionData(prev => ({ ...prev, sessionLabel: e.target.value }))}
+                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => handleAddSession(group.schoolId)}
+                                                        disabled={savingCell === 'new-session'}
+                                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                                    >
+                                                        {savingCell === 'new-session' ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <Plus className="w-4 h-4" />
+                                                        )}
+                                                        追加
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setAddingSessionForSchool(null)
+                                                            setNewSessionData({})
+                                                        }}
+                                                        className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+                                                    >
+                                                        キャンセル
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => setAddingSessionForSchool(group.schoolId)}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-slate-300 text-slate-600 rounded-lg hover:border-blue-400 hover:text-blue-600 transition-colors"
+                                            >
+                                                <Plus className="w-4 h-4" />
+                                                新しい試験回を追加
+                                            </button>
+                                        )}
+                                    </div>
                                     {group.sessions.map(session => {
                                         const isSessionExpanded = expandedSessions.has(session.sessionId)
 
@@ -731,6 +889,56 @@ export default function EditPage() {
             {filteredGroups.length === 0 && (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                     <p className="text-slate-500">データが見つかりませんでした</p>
+                </div>
+            )}
+
+            {/* 新しい学校追加モーダル */}
+            {showNewSchoolModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+                        <h2 className="text-xl font-bold text-slate-800 mb-4">新しい学校を追加</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-slate-600 mb-2">学校名 *</label>
+                                <input
+                                    type="text"
+                                    placeholder="開成中学校"
+                                    value={newSchoolName}
+                                    onChange={(e) => setNewSchoolName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleAddNewSchool()
+                                        }
+                                    }}
+                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleAddNewSchool}
+                                    disabled={savingCell === 'new-school'}
+                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {savingCell === 'new-school' ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Plus className="w-4 h-4" />
+                                    )}
+                                    追加
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowNewSchoolModal(false)
+                                        setNewSchoolName('')
+                                    }}
+                                    className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+                                >
+                                    キャンセル
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
