@@ -87,8 +87,18 @@ export default function LoginPage() {
                         </button>
                     </form>
 
+                    {/* パスワードを忘れた方 */}
+                    <div className="mt-4 text-center">
+                        <Link
+                            href="/forgot-password"
+                            className="text-slate-400 hover:text-teal-500 text-sm transition-colors"
+                        >
+                            パスワードを忘れた方はこちら
+                        </Link>
+                    </div>
+
                     {/* 登録リンク */}
-                    <div className="mt-6 text-center">
+                    <div className="mt-3 text-center">
                         <p className="text-slate-500 text-sm">
                             アカウントをお持ちでない方は{' '}
                             <Link href="/register" className="text-teal-600 hover:text-teal-500 underline transition-colors">
