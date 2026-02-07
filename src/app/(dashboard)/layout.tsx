@@ -50,9 +50,9 @@ export default async function DashboardLayout({
                                 得点入力
                             </Link>
                             {isAdmin && (
-                                <Link href="/admin" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
+                                <Link href="/admin-panel" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                     <Settings className="w-4 h-4" />
-                                    管理
+                                    管理者パネル
                                 </Link>
                             )}
                         </nav>
@@ -103,7 +103,7 @@ export default async function DashboardLayout({
                     </Link>
                     {isAdmin && (
                         <Link
-                            href="/admin"
+                            href="/admin-panel"
                             className="flex flex-col items-center gap-1 px-4 py-2 text-teal-800 hover:text-teal-400 active:bg-teal-200/30 rounded-lg transition-all"
                         >
                             <Settings className="w-6 h-6" />
