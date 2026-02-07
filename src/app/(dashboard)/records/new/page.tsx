@@ -149,14 +149,16 @@ export default function NewRecordPage() {
 
             if (scoresError) throw scoresError
 
+            // 成功時のみリセット
+            setExistingRecordId(null)
+            setShowOverwriteConfirm(false)
+
             router.push('/records')
             router.refresh()
         } catch (err) {
             setError(err instanceof Error ? err.message : '保存に失敗しました')
         } finally {
             setSaving(false)
-            setExistingRecordId(null)
-            setShowOverwriteConfirm(false)
         }
     }
 
