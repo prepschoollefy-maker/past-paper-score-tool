@@ -23,6 +23,9 @@ export default async function DashboardLayout({
         .single()
 
     const isAdmin = profile?.role === 'admin'
+    const displayName = (profile?.student_last_name && profile?.student_first_name)
+        ? `${profile.student_last_name} ${profile.student_first_name}`
+        : profile?.name || user.email?.split('@')[0] || 'あなた'
 
     return (
         <div className="min-h-screen bg-teal-50">
@@ -32,7 +35,7 @@ export default async function DashboardLayout({
                     <div className="flex justify-between items-center h-16">
                         <div className="flex items-center gap-2">
                             <Link href="/dashboard" className="text-xl font-bold text-teal-700">
-                                {profile?.name || user.email?.split('@')[0] || 'あなた'}さんの過去問得点管理
+                                {displayName}さんの過去問得点管理
                             </Link>
                         </div>
 
@@ -59,7 +62,7 @@ export default async function DashboardLayout({
 
                         <div className="flex items-center gap-4">
                             <span className="text-sm text-teal-300 hidden sm:block">
-                                {profile?.name || user.email}
+                                {displayName}
                             </span>
                             <form action={signOut}>
                                 <button
