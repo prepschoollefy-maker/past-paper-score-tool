@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, Database, Upload, Users, LayoutDashboard, Shield } from 'lucide-react'
+import { LogOut, Database, Upload, Users, LayoutDashboard, Shield, BarChart3 } from 'lucide-react'
 import { signOut } from '@/app/actions/auth'
 
 export default async function AdminPanelLayout({
@@ -60,6 +60,10 @@ export default async function AdminPanelLayout({
                                 <Users className="w-4 h-4" />
                                 ユーザー管理
                             </Link>
+                            <Link href="/admin-panel/scores" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
+                                <BarChart3 className="w-4 h-4" />
+                                得点閲覧
+                            </Link>
                             <div className="h-6 w-px bg-slate-600"></div>
                             <Link href="/dashboard" className="flex items-center gap-2 text-slate-400 hover:text-teal-400 transition-colors text-sm">
                                 <LayoutDashboard className="w-4 h-4" />
@@ -116,6 +120,13 @@ export default async function AdminPanelLayout({
                     >
                         <Users className="w-5 h-5" />
                         <span className="text-xs font-medium">ユーザー</span>
+                    </Link>
+                    <Link
+                        href="/admin-panel/scores"
+                        className="flex flex-col items-center gap-1 px-3 py-2 text-slate-300 hover:text-orange-400 active:bg-slate-700/30 rounded-lg transition-all"
+                    >
+                        <BarChart3 className="w-5 h-5" />
+                        <span className="text-xs font-medium">得点</span>
                     </Link>
                 </div>
             </nav>
