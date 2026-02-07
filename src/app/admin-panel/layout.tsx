@@ -33,7 +33,7 @@ export default async function AdminPanelLayout({
             <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-50 shadow-lg">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center h-16">
-                        <div className="flex items-center gap-3">
+                        <Link href="/admin-panel" className="flex items-center gap-3">
                             <div className="bg-orange-600 p-2 rounded-lg">
                                 <Shield className="w-5 h-5 text-white" />
                             </div>
@@ -41,12 +41,12 @@ export default async function AdminPanelLayout({
                                 <h1 className="text-xl font-bold text-white">管理者パネル</h1>
                                 <p className="text-xs text-slate-400">Admin Panel</p>
                             </div>
-                        </div>
+                        </Link>
 
                         <nav className="hidden md:flex items-center gap-6">
-                            <Link href="/admin-panel" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
-                                <LayoutDashboard className="w-4 h-4" />
-                                ダッシュボード
+                            <Link href="/admin-panel/students" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
+                                <Users className="w-4 h-4" />
+                                ユーザー管理
                             </Link>
                             <Link href="/admin-panel/edit" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
                                 <Database className="w-4 h-4" />
@@ -55,10 +55,6 @@ export default async function AdminPanelLayout({
                             <Link href="/admin-panel/import" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
                                 <Upload className="w-4 h-4" />
                                 データ取込
-                            </Link>
-                            <Link href="/admin-panel/students" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
-                                <Users className="w-4 h-4" />
-                                ユーザー管理
                             </Link>
                             <Link href="/admin-panel/scores" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
                                 <BarChart3 className="w-4 h-4" />
@@ -94,11 +90,11 @@ export default async function AdminPanelLayout({
             <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 z-50 shadow-lg">
                 <div className="flex justify-around py-3">
                     <Link
-                        href="/admin-panel"
+                        href="/admin-panel/students"
                         className="flex flex-col items-center gap-1 px-3 py-2 text-slate-300 hover:text-orange-400 active:bg-slate-700/30 rounded-lg transition-all"
                     >
-                        <LayoutDashboard className="w-5 h-5" />
-                        <span className="text-xs font-medium">ダッシュボード</span>
+                        <Users className="w-5 h-5" />
+                        <span className="text-xs font-medium">ユーザー</span>
                     </Link>
                     <Link
                         href="/admin-panel/edit"
@@ -113,13 +109,6 @@ export default async function AdminPanelLayout({
                     >
                         <Upload className="w-5 h-5" />
                         <span className="text-xs font-medium">取込</span>
-                    </Link>
-                    <Link
-                        href="/admin-panel/students"
-                        className="flex flex-col items-center gap-1 px-3 py-2 text-slate-300 hover:text-orange-400 active:bg-slate-700/30 rounded-lg transition-all"
-                    >
-                        <Users className="w-5 h-5" />
-                        <span className="text-xs font-medium">ユーザー</span>
                     </Link>
                     <Link
                         href="/admin-panel/scores"
