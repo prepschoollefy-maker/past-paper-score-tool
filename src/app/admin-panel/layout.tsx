@@ -58,7 +58,7 @@ export default async function AdminPanelLayout({
                             </Link>
                             <Link href="/admin-panel/students" className="flex items-center gap-2 text-slate-300 hover:text-orange-400 transition-colors">
                                 <Users className="w-4 h-4" />
-                                生徒管理
+                                ユーザー管理
                             </Link>
                             <div className="h-6 w-px bg-slate-600"></div>
                             <Link href="/dashboard" className="flex items-center gap-2 text-slate-400 hover:text-teal-400 transition-colors text-sm">
@@ -115,7 +115,7 @@ export default async function AdminPanelLayout({
                         className="flex flex-col items-center gap-1 px-3 py-2 text-slate-300 hover:text-orange-400 active:bg-slate-700/30 rounded-lg transition-all"
                     >
                         <Users className="w-5 h-5" />
-                        <span className="text-xs font-medium">生徒</span>
+                        <span className="text-xs font-medium">ユーザー</span>
                     </Link>
                 </div>
             </nav>
