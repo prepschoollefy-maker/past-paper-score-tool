@@ -31,11 +31,12 @@ export async function updateSession(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser()
 
-    // 未ログインユーザーを/loginにリダイレクト（/loginと/auth以外）
+    // 未ログインユーザーを/loginにリダイレクト（/login、/auth、/register以外）
     if (
         !user &&
         !request.nextUrl.pathname.startsWith('/login') &&
-        !request.nextUrl.pathname.startsWith('/auth')
+        !request.nextUrl.pathname.startsWith('/auth') &&
+        !request.nextUrl.pathname.startsWith('/register')
     ) {
         const url = request.nextUrl.clone()
         url.pathname = '/login'
