@@ -7,6 +7,13 @@ CREATE TABLE profiles (
   email TEXT NOT NULL,
   name TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+  student_last_name TEXT,
+  student_first_name TEXT,
+  parent_last_name TEXT,
+  parent_first_name TEXT,
+  grade TEXT,
+  cram_school TEXT,
+  cram_school_other TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
