@@ -187,9 +187,7 @@ export default function EditPage() {
 
             setData(flattened)
 
-            // 初期状態で全ての学校を展開
-            const schoolIds = new Set(flattened.map(r => r.schoolId).filter(Boolean))
-            setExpandedSchools(schoolIds)
+            // 初期状態は全て閉じた状態
         } catch (err) {
             setError(err instanceof Error ? err.message : 'データの取得に失敗しました')
         } finally {
