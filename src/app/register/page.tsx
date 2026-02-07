@@ -28,6 +28,7 @@ const GRADES = [
 export default function RegisterPage() {
     const [formData, setFormData] = useState({
         email: '',
+        emailConfirm: '',
         password: '',
         passwordConfirm: '',
         parentLastName: '',
@@ -51,6 +52,10 @@ export default function RegisterPage() {
         e.preventDefault()
         setError(null)
 
+        if (formData.email !== formData.emailConfirm) {
+            setError('メールアドレスが一致しません')
+            return
+        }
         if (formData.password !== formData.passwordConfirm) {
             setError('パスワードが一致しません')
             return
@@ -128,18 +133,33 @@ export default function RegisterPage() {
 
                     <form onSubmit={handleRegister} className="space-y-5">
                         {/* メールアドレス */}
-                        <div>
-                            <label className={labelClass}>
-                                メールアドレス <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                type="email"
-                                value={formData.email}
-                                onChange={(e) => updateField('email', e.target.value)}
-                                required
-                                className={inputClass}
-                                placeholder="example@email.com"
-                            />
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className={labelClass}>
+                                    メールアドレス <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => updateField('email', e.target.value)}
+                                    required
+                                    className={inputClass}
+                                    placeholder="example@email.com"
+                                />
+                            </div>
+                            <div>
+                                <label className={labelClass}>
+                                    メールアドレス確認 <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    type="email"
+                                    value={formData.emailConfirm}
+                                    onChange={(e) => updateField('emailConfirm', e.target.value)}
+                                    required
+                                    className={inputClass}
+                                    placeholder="再入力"
+                                />
+                            </div>
                         </div>
 
                         {/* パスワード */}
