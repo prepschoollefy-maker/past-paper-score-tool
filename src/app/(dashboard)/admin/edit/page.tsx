@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader2, Plus, Download, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, Download, Trash2, ChevronDown, ChevronUp, Edit2 } from 'lucide-react'
 import Link from 'next/link'
-import AddDataModal from '@/components/AddDataModal'
 
 interface FlattenedRow {
     sessionId: string
@@ -38,34 +37,36 @@ interface FlattenedRow {
     [key: string]: string | number | undefined
 }
 
-const COLUMNS = [
-    { key: 'schoolName', label: '学校名', editable: true },
-    { key: 'alias', label: '別名', editable: true },
-    { key: 'year', label: '年度', editable: true },
-    { key: 'sessionLabel', label: '回', editable: true },
-    { key: '国語配点', label: '国語配点', editable: true },
-    { key: '算数配点', label: '算数配点', editable: true },
-    { key: '社会配点', label: '社会配点', editable: true },
-    { key: '理科配点', label: '理科配点', editable: true },
-    { key: '英語配点', label: '英語配点', editable: true },
-    { key: '国語合平均', label: '国語合平均', editable: true },
-    { key: '国語受平均', label: '国語受平均', editable: true },
-    { key: '算数合平均', label: '算数合平均', editable: true },
-    { key: '算数受平均', label: '算数受平均', editable: true },
-    { key: '社会合平均', label: '社会合平均', editable: true },
-    { key: '社会受平均', label: '社会受平均', editable: true },
-    { key: '理科合平均', label: '理科合平均', editable: true },
-    { key: '理科受平均', label: '理科受平均', editable: true },
-    { key: '英語合平均', label: '英語合平均', editable: true },
-    { key: '英語受平均', label: '英語受平均', editable: true },
-    { key: '合格最低点', label: '合格最低点', editable: true },
-    { key: '合格者平均', label: '合格者平均', editable: true },
-    { key: '受験者平均', label: '受験者平均', editable: true },
+interface SchoolGroup {
+    schoolId: string
+    schoolName: string
+    alias: string
+    sessions: FlattenedRow[]
+}
+
+const SUBJECT_FIELDS = [
+    { key: '国語配点', label: '国語配点' },
+    { key: '算数配点', label: '算数配点' },
+    { key: '社会配点', label: '社会配点' },
+    { key: '理科配点', label: '理科配点' },
+    { key: '英語配点', label: '英語配点' },
+    { key: '国語合平均', label: '国語合平均' },
+    { key: '国語受平均', label: '国語受平均' },
+    { key: '算数合平均', label: '算数合平均' },
+    { key: '算数受平均', label: '算数受平均' },
+    { key: '社会合平均', label: '社会合平均' },
+    { key: '社会受平均', label: '社会受平均' },
+    { key: '理科合平均', label: '理科合平均' },
+    { key: '理科受平均', label: '理科受平均' },
+    { key: '英語合平均', label: '英語合平均' },
+    { key: '英語受平均', label: '英語受平均' },
+    { key: '合格最低点', label: '合格最低点' },
+    { key: '合格者平均', label: '合格者平均' },
+    { key: '受験者平均', label: '受験者平均' },
 ] as const
 
 export default function EditPage() {
     const [data, setData] = useState<FlattenedRow[]>([])
-    const [filteredData, setFilteredData] = useState<FlattenedRow[]>([])
     const [searchSchoolName, setSearchSchoolName] = useState('')
     const [searchYear, setSearchYear] = useState('')
     const [searchSession, setSearchSession] = useState('')
@@ -73,8 +74,8 @@ export default function EditPage() {
     const [savingCell, setSavingCell] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
-    const [newRow, setNewRow] = useState<FlattenedRow | null>(null)
-    const [newRowId, setNewRowId] = useState<number>(0)
+    const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set())
+    const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
 
     const supabase = createClient()
 
@@ -92,8 +93,6 @@ export default function EditPage() {
             let pageSize = 1000
             let page = 0
             let hasMore = true
-
-            console.log('データ取得開始...')
 
             while (hasMore) {
                 const start = page * pageSize
@@ -117,9 +116,6 @@ export default function EditPage() {
                     hasMore = false
                 } else {
                     allSessions = [...allSessions, ...sessions]
-                    console.log(`ページ ${page + 1}: ${sessions.length}件取得 (累計: ${allSessions.length}件)`)
-
-                    // 1000件未満なら最後のページ
                     if (sessions.length < pageSize) {
                         hasMore = false
                     } else {
@@ -127,8 +123,6 @@ export default function EditPage() {
                     }
                 }
             }
-
-            console.log(`全データ取得完了: ${allSessions.length}件`)
 
             // 2. 学校の別名を取得
             const { data: aliases, error: aliasesError } = await supabase
@@ -187,22 +181,11 @@ export default function EditPage() {
                 return row
             })
 
-            // ソート: 学校名 → 年度 → 回
-            const sorted = flattened.sort((a, b) => {
-                // 1. 学校名で比較
-                const schoolCompare = a.schoolName.localeCompare(b.schoolName, 'ja')
-                if (schoolCompare !== 0) return schoolCompare
+            setData(flattened)
 
-                // 2. 年度で比較
-                const yearCompare = a.year - b.year
-                if (yearCompare !== 0) return yearCompare
-
-                // 3. 回で比較
-                return a.sessionLabel.localeCompare(b.sessionLabel, 'ja')
-            })
-
-            setData(sorted)
-            setFilteredData(sorted)
+            // 初期状態で全ての学校を展開
+            const schoolIds = new Set(flattened.map(r => r.schoolId).filter(Boolean))
+            setExpandedSchools(schoolIds)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'データの取得に失敗しました')
         } finally {
@@ -210,175 +193,24 @@ export default function EditPage() {
         }
     }
 
-    function handleSearch(dataToFilter: FlattenedRow[] = data) {
-        let filtered = dataToFilter
-
-        // 学校名でフィルター
-        if (searchSchoolName.trim()) {
-            const lower = searchSchoolName.toLowerCase()
-            filtered = filtered.filter(row =>
-                row.schoolName.toLowerCase().includes(lower) ||
-                row.alias.toLowerCase().includes(lower)
-            )
+    function toggleSchool(schoolId: string) {
+        const newExpanded = new Set(expandedSchools)
+        if (newExpanded.has(schoolId)) {
+            newExpanded.delete(schoolId)
+        } else {
+            newExpanded.add(schoolId)
         }
-
-        // 年度でフィルター
-        if (searchYear.trim()) {
-            filtered = filtered.filter(row =>
-                row.year.toString().includes(searchYear)
-            )
-        }
-
-        // 回でフィルター
-        if (searchSession.trim()) {
-            const lower = searchSession.toLowerCase()
-            filtered = filtered.filter(row =>
-                row.sessionLabel.toLowerCase().includes(lower)
-            )
-        }
-
-        setFilteredData(filtered)
+        setExpandedSchools(newExpanded)
     }
 
-    function handleClearSearch() {
-        setSearchSchoolName('')
-        setSearchYear('')
-        setSearchSession('')
-        setFilteredData(data)
-    }
-
-    async function handleDeleteRow(sessionId: string, schoolName: string) {
-        // 確認ダイアログ
-        const confirmed = window.confirm(
-            `${schoolName}のこのデータを削除してもよろしいですか？\n\nこの操作は取り消せません。`
-        )
-
-        if (!confirmed) return
-
-        setSavingCell(sessionId)
-
-        try {
-            // exam_sessionsを削除（関連するrequired_subjectsとofficial_dataも自動削除される前提）
-            const { error: deleteError } = await supabase
-                .from('exam_sessions')
-                .delete()
-                .eq('id', sessionId)
-
-            if (deleteError) throw deleteError
-
-            // ローカルステートから削除
-            const updatedData = data.filter(row => row.sessionId !== sessionId)
-            const updatedFilteredData = filteredData.filter(row => row.sessionId !== sessionId)
-
-            setData(updatedData)
-            setFilteredData(updatedFilteredData)
-
-            setSuccessMessage('データを削除しました')
-            setTimeout(() => setSuccessMessage(null), 2000)
-        } catch (err) {
-            setError(err instanceof Error ? err.message : '削除に失敗しました')
-        } finally {
-            setSavingCell(null)
+    function toggleSession(sessionId: string) {
+        const newExpanded = new Set(expandedSessions)
+        if (newExpanded.has(sessionId)) {
+            newExpanded.delete(sessionId)
+        } else {
+            newExpanded.add(sessionId)
         }
-    }
-
-    function handleAddNewRow() {
-        const tempId = `temp-${newRowId}`
-        setNewRowId(prev => prev + 1)
-
-        const emptyRow: FlattenedRow = {
-            sessionId: tempId,
-            schoolId: '',
-            schoolName: '',
-            alias: '',
-            year: new Date().getFullYear(),
-            sessionLabel: '',
-        }
-
-        setNewRow(emptyRow)
-    }
-
-    async function handleNewRowCellEdit(columnKey: string, newValue: string) {
-        if (!newRow) return
-
-        const cellKey = `${newRow.sessionId}-${columnKey}`
-        setSavingCell(cellKey)
-
-        try {
-            // 新規行のローカル状態を更新
-            const updatedRow = { ...newRow, [columnKey]: columnKey === 'year' ? parseInt(newValue) || new Date().getFullYear() : newValue }
-            setNewRow(updatedRow)
-
-            // 必須項目（学校名、年度、回）が全て入力されたらDBに保存
-            if (updatedRow.schoolName && updatedRow.year && updatedRow.sessionLabel) {
-                // 1. 学校を検索または作成
-                let schoolId = updatedRow.schoolId
-
-                if (!schoolId) {
-                    const { data: existingSchools } = await supabase
-                        .from('schools')
-                        .select('id')
-                        .eq('name', updatedRow.schoolName)
-                        .limit(1)
-
-                    if (existingSchools && existingSchools.length > 0) {
-                        schoolId = existingSchools[0].id
-                    } else {
-                        const { data: newSchool, error: schoolError } = await supabase
-                            .from('schools')
-                            .insert({ name: updatedRow.schoolName })
-                            .select('id')
-                            .single()
-
-                        if (schoolError) throw schoolError
-                        schoolId = newSchool.id
-                    }
-                }
-
-                // 2. exam_sessionを作成
-                const { data: newSession, error: sessionError } = await supabase
-                    .from('exam_sessions')
-                    .insert({
-                        school_id: schoolId,
-                        year: updatedRow.year,
-                        session_label: updatedRow.sessionLabel
-                    })
-                    .select('id')
-                    .single()
-
-                if (sessionError) throw sessionError
-
-                // 3. 別名がある場合は保存
-                if (updatedRow.alias) {
-                    await supabase
-                        .from('school_aliases')
-                        .insert({
-                            school_id: schoolId,
-                            alias: updatedRow.alias
-                        })
-                }
-
-                // 4. 新しいセッションIDでローカル状態を更新
-                const savedRow: FlattenedRow = {
-                    ...updatedRow,
-                    sessionId: newSession.id,
-                    schoolId: schoolId
-                }
-
-                // dataとfilteredDataに追加
-                const updatedData = [...data, savedRow]
-                setData(updatedData)
-                setFilteredData([...filteredData, savedRow])
-                setNewRow(null)
-
-                setSuccessMessage('新しいデータを追加しました')
-                setTimeout(() => setSuccessMessage(null), 2000)
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : '保存に失敗しました')
-        } finally {
-            setSavingCell(null)
-        }
+        setExpandedSessions(newExpanded)
     }
 
     async function handleCellEdit(sessionId: string, columnKey: string, newValue: string) {
@@ -401,13 +233,11 @@ export default function EditPage() {
             }
             // 別名の更新
             else if (columnKey === 'alias') {
-                // 既存の別名を削除
                 await supabase
                     .from('school_aliases')
                     .delete()
                     .eq('school_id', row.schoolId)
 
-                // 新しい別名を追加（空でない場合）
                 if (newValue.trim()) {
                     await supabase
                         .from('school_aliases')
@@ -445,7 +275,6 @@ export default function EditPage() {
             if (columnKey.endsWith('配点')) {
                 const subject = columnKey.replace('配点', '')
 
-                // 既存の科目を削除して再作成
                 await supabase
                     .from('required_subjects')
                     .delete()
@@ -472,7 +301,6 @@ export default function EditPage() {
 
                 const dbField = fieldMap[columnKey as keyof typeof fieldMap]
 
-                // 総合データのレコードを探す
                 const { data: existing } = await supabase
                     .from('official_data')
                     .select('id')
@@ -532,7 +360,6 @@ export default function EditPage() {
             const updatedData = [...data]
             const actualRowIndex = data.findIndex(r => r.sessionId === row.sessionId)
             if (actualRowIndex !== -1) {
-                // 年度は数値、その他の基本フィールドは文字列、数値フィールドはnullか数値
                 let finalValue: string | number | undefined
                 if (columnKey === 'year') {
                     finalValue = parseInt(newValue)
@@ -547,11 +374,8 @@ export default function EditPage() {
                     [columnKey]: finalValue,
                 }
                 setData(updatedData)
-                // 検索フィルターを再適用
-                handleSearch(updatedData)
             }
 
-            // 保存成功メッセージを表示
             setSuccessMessage('保存しました')
             setTimeout(() => setSuccessMessage(null), 2000)
 
@@ -562,8 +386,36 @@ export default function EditPage() {
         }
     }
 
+    async function handleDeleteSession(sessionId: string, schoolName: string) {
+        const confirmed = window.confirm(
+            `${schoolName}のこのデータを削除してもよろしいですか？\n\nこの操作は取り消せません。`
+        )
+
+        if (!confirmed) return
+
+        setSavingCell(sessionId)
+
+        try {
+            const { error: deleteError } = await supabase
+                .from('exam_sessions')
+                .delete()
+                .eq('id', sessionId)
+
+            if (deleteError) throw deleteError
+
+            const updatedData = data.filter(row => row.sessionId !== sessionId)
+            setData(updatedData)
+
+            setSuccessMessage('データを削除しました')
+            setTimeout(() => setSuccessMessage(null), 2000)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '削除に失敗しました')
+        } finally {
+            setSavingCell(null)
+        }
+    }
+
     function handleExportCSV() {
-        // CSVヘッダー（テンプレート形式）
         const headers = [
             '学校名', '別名', '年度', '回',
             '国語配点', '算数配点', '社会配点', '理科配点', '英語配点',
@@ -573,39 +425,38 @@ export default function EditPage() {
             '合格最低点', '合格者平均', '受験者平均'
         ]
 
-        // データをCSV形式に変換（列順序をテンプレートと一致）
-        const rows = filteredData.map(row => [
-            row.schoolName,
-            row.alias || '',
-            row.year,
-            row.sessionLabel,
-            row['国語配点'] ?? '',
-            row['算数配点'] ?? '',
-            row['社会配点'] ?? '',
-            row['理科配点'] ?? '',
-            row['英語配点'] ?? '',
-            row['国語合平均'] ?? '',
-            row['国語受平均'] ?? '',
-            row['算数合平均'] ?? '',
-            row['算数受平均'] ?? '',
-            row['社会合平均'] ?? '',
-            row['社会受平均'] ?? '',
-            row['理科合平均'] ?? '',
-            row['理科受平均'] ?? '',
-            row['英語合平均'] ?? '',
-            row['英語受平均'] ?? '',
-            row['合格最低点'] ?? '',
-            row['合格者平均'] ?? '',
-            row['受験者平均'] ?? ''
-        ])
+        const rows = filteredGroups.flatMap(group =>
+            group.sessions.map(row => [
+                row.schoolName,
+                row.alias || '',
+                row.year,
+                row.sessionLabel,
+                row['国語配点'] ?? '',
+                row['算数配点'] ?? '',
+                row['社会配点'] ?? '',
+                row['理科配点'] ?? '',
+                row['英語配点'] ?? '',
+                row['国語合平均'] ?? '',
+                row['国語受平均'] ?? '',
+                row['算数合平均'] ?? '',
+                row['算数受平均'] ?? '',
+                row['社会合平均'] ?? '',
+                row['社会受平均'] ?? '',
+                row['理科合平均'] ?? '',
+                row['理科受平均'] ?? '',
+                row['英語合平均'] ?? '',
+                row['英語受平均'] ?? '',
+                row['合格最低点'] ?? '',
+                row['合格者平均'] ?? '',
+                row['受験者平均'] ?? ''
+            ])
+        )
 
-        // CSVテキストを生成
         const csvContent = [
             headers.join(','),
             ...rows.map(row => row.join(','))
         ].join('\n')
 
-        // BOM付きUTF-8でダウンロード
         const bom = '\uFEFF'
         const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
         const url = URL.createObjectURL(blob)
@@ -615,6 +466,70 @@ export default function EditPage() {
         link.click()
         URL.revokeObjectURL(url)
     }
+
+    // 学校ごとにグループ化
+    const schoolGroups = data.reduce((acc, row) => {
+        if (!acc[row.schoolId]) {
+            acc[row.schoolId] = {
+                schoolId: row.schoolId,
+                schoolName: row.schoolName,
+                alias: row.alias,
+                sessions: []
+            }
+        }
+        acc[row.schoolId].sessions.push(row)
+        return acc
+    }, {} as Record<string, SchoolGroup>)
+
+    // 学校を名前順でソート
+    const sortedGroups = Object.values(schoolGroups).sort((a, b) =>
+        a.schoolName.localeCompare(b.schoolName, 'ja')
+    )
+
+    // 各学校内のセッションをソート（年度降順 → 回昇順）
+    sortedGroups.forEach(group => {
+        group.sessions.sort((a, b) => {
+            const yearDiff = b.year - a.year
+            if (yearDiff !== 0) return yearDiff
+            return a.sessionLabel.localeCompare(b.sessionLabel, 'ja')
+        })
+    })
+
+    // 検索フィルター適用
+    const filteredGroups = sortedGroups.filter(group => {
+        // 学校名フィルター
+        if (searchSchoolName.trim()) {
+            const lower = searchSchoolName.toLowerCase()
+            if (!group.schoolName.toLowerCase().includes(lower) &&
+                !group.alias.toLowerCase().includes(lower)) {
+                return false
+            }
+        }
+
+        // セッションフィルター
+        const matchingSessions = group.sessions.filter(session => {
+            if (searchYear.trim() && !session.year.toString().includes(searchYear)) {
+                return false
+            }
+            if (searchSession.trim() && !session.sessionLabel.toLowerCase().includes(searchSession.toLowerCase())) {
+                return false
+            }
+            return true
+        })
+
+        return matchingSessions.length > 0
+    }).map(group => ({
+        ...group,
+        sessions: group.sessions.filter(session => {
+            if (searchYear.trim() && !session.year.toString().includes(searchYear)) {
+                return false
+            }
+            if (searchSession.trim() && !session.sessionLabel.toLowerCase().includes(searchSession.toLowerCase())) {
+                return false
+            }
+            return true
+        })
+    }))
 
     if (loading) {
         return (
@@ -640,14 +555,6 @@ export default function EditPage() {
                 </div>
                 <div className="flex gap-3">
                     <button
-                        onClick={handleAddNewRow}
-                        disabled={!!newRow}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <Plus className="w-4 h-4" />
-                        新規行を追加
-                    </button>
-                    <button
                         onClick={handleExportCSV}
                         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
                     >
@@ -659,13 +566,12 @@ export default function EditPage() {
 
             {/* 検索ボックス */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input
                         type="text"
                         placeholder="学校名で検索..."
                         value={searchSchoolName}
                         onChange={(e) => setSearchSchoolName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                         className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     <input
@@ -673,7 +579,6 @@ export default function EditPage() {
                         placeholder="年度で検索..."
                         value={searchYear}
                         onChange={(e) => setSearchYear(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                         className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     <input
@@ -681,27 +586,12 @@ export default function EditPage() {
                         placeholder="回で検索..."
                         value={searchSession}
                         onChange={(e) => setSearchSession(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                         className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => handleSearch()}
-                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                            検索
-                        </button>
-                        <button
-                            onClick={handleClearSearch}
-                            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
-                        >
-                            クリア
-                        </button>
-                    </div>
                 </div>
                 {(searchSchoolName || searchYear || searchSession) && (
                     <p className="text-sm text-slate-500 mt-2">
-                        {filteredData.length}件の結果が見つかりました
+                        {filteredGroups.length}校 ({filteredGroups.reduce((sum, g) => sum + g.sessions.length, 0)}件) が見つかりました
                     </p>
                 )}
             </div>
@@ -712,140 +602,137 @@ export default function EditPage() {
                 </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                {/* スクロール可能なテーブルコンテナ */}
-                <div className="overflow-auto max-h-[600px]">
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-50 sticky top-0 z-10">
-                            <tr>
-                                {COLUMNS.map(col => {
-                                    // 列ごとに適切な幅を設定
-                                    let width = 'min-w-[80px]' // デフォルト
-                                    if (col.key === 'schoolName') width = 'min-w-[200px]'
-                                    else if (col.key === 'alias') width = 'min-w-[150px]'
-                                    else if (col.key === 'year') width = 'min-w-[80px]'
-                                    else if (col.key === 'sessionLabel') width = 'min-w-[120px]'
+            {/* 学校グループリスト */}
+            <div className="space-y-4">
+                {filteredGroups.map(group => {
+                    const isExpanded = expandedSchools.has(group.schoolId)
 
-                                    return (
-                                        <th
-                                            key={col.key}
-                                            className={`px-3 py-2 text-left text-xs font-medium text-slate-500 whitespace-nowrap border-b border-slate-200 ${width}`}
-                                        >
-                                            {col.label}
-                                        </th>
-                                    )
-                                })}
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 whitespace-nowrap border-b border-slate-200 min-w-[60px]">
-                                    操作
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200">
-                            {/* 新規行 */}
-                            {newRow && (
-                                <tr className="bg-blue-50 hover:bg-blue-100">
-                                    {COLUMNS.map(col => {
-                                        const value = newRow[col.key as keyof FlattenedRow]
-                                        const cellKey = `${newRow.sessionId}-${col.key}`
-                                        const isSaving = savingCell === cellKey
+                    return (
+                        <div
+                            key={group.schoolId}
+                            className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
+                        >
+                            {/* 学校ヘッダー */}
+                            <button
+                                onClick={() => toggleSchool(group.schoolId)}
+                                className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                            >
+                                <div className="flex-1 text-left">
+                                    <div className="flex items-center gap-3">
+                                        <h2 className="text-xl font-bold text-slate-800">
+                                            {group.schoolName}
+                                        </h2>
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                                            {group.sessions.length}件
+                                        </span>
+                                    </div>
+                                    {group.alias && (
+                                        <p className="text-sm text-slate-500 mt-1">別名: {group.alias}</p>
+                                    )}
+                                </div>
+                                {isExpanded ? (
+                                    <ChevronUp className="w-5 h-5 text-slate-400" />
+                                ) : (
+                                    <ChevronDown className="w-5 h-5 text-slate-400" />
+                                )}
+                            </button>
+
+                            {/* セッションリスト */}
+                            {isExpanded && (
+                                <div className="border-t border-slate-200">
+                                    {group.sessions.map(session => {
+                                        const isSessionExpanded = expandedSessions.has(session.sessionId)
 
                                         return (
-                                            <td key={col.key} className="px-3 py-2 whitespace-nowrap">
-                                                {col.editable ? (
-                                                    <div className="relative">
-                                                        <input
-                                                            type="text"
-                                                            defaultValue={value ?? ''}
-                                                            onBlur={(e) => handleNewRowCellEdit(col.key, e.target.value)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    e.currentTarget.blur()
-                                                                }
-                                                            }}
-                                                            placeholder={col.key === 'schoolName' ? '学校名（必須）' : col.key === 'year' ? '年度（必須）' : col.key === 'sessionLabel' ? '回（必須）' : ''}
-                                                            className="w-full px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                                                        />
-                                                        {isSaving && (
-                                                            <Loader2 className="w-4 h-4 animate-spin text-blue-600 absolute right-2 top-1/2 -translate-y-1/2" />
-                                                        )}
+                                            <div
+                                                key={session.sessionId}
+                                                className="border-b border-slate-100 last:border-b-0"
+                                            >
+                                                <div className="p-4 hover:bg-slate-50 transition-colors">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-4 flex-1">
+                                                            <div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-semibold text-slate-800">
+                                                                        {session.year}年度
+                                                                    </span>
+                                                                    <span className="text-slate-600">
+                                                                        {session.sessionLabel}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => toggleSession(session.sessionId)}
+                                                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                                            >
+                                                                {isSessionExpanded ? (
+                                                                    <ChevronUp className="w-4 h-4" />
+                                                                ) : (
+                                                                    <ChevronDown className="w-4 h-4" />
+                                                                )}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteSession(session.sessionId, session.schoolName)}
+                                                                disabled={savingCell === session.sessionId}
+                                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                ) : (
-                                                    <span className="text-slate-800">{value ?? '-'}</span>
-                                                )}
-                                            </td>
+
+                                                    {/* 詳細編集フォーム */}
+                                                    {isSessionExpanded && (
+                                                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                                            {SUBJECT_FIELDS.map(field => {
+                                                                const value = session[field.key as keyof FlattenedRow]
+                                                                const cellKey = `${session.sessionId}-${field.key}`
+                                                                const isSaving = savingCell === cellKey
+
+                                                                return (
+                                                                    <div key={field.key}>
+                                                                        <label className="block text-xs text-slate-500 mb-1">
+                                                                            {field.label}
+                                                                        </label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type="text"
+                                                                                defaultValue={value ?? ''}
+                                                                                onBlur={(e) => handleCellEdit(session.sessionId, field.key, e.target.value)}
+                                                                                onKeyDown={(e) => {
+                                                                                    if (e.key === 'Enter') {
+                                                                                        e.currentTarget.blur()
+                                                                                    }
+                                                                                }}
+                                                                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                                            />
+                                                                            {isSaving && (
+                                                                                <Loader2 className="w-3 h-3 animate-spin text-blue-600 absolute right-2 top-1/2 -translate-y-1/2" />
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         )
                                     })}
-                                    <td className="px-3 py-2 whitespace-nowrap">
-                                        <button
-                                            onClick={() => setNewRow(null)}
-                                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                            title="キャンセル"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </td>
-                                </tr>
+                                </div>
                             )}
-
-                            {/* 既存データ */}
-                            {filteredData.map((row, rowIndex) => (
-                                <tr key={row.sessionId} className="hover:bg-slate-50">
-                                    {COLUMNS.map(col => {
-                                        const value = row[col.key as keyof FlattenedRow]
-                                        const cellKey = `${row.sessionId}-${col.key}`
-                                        const isSaving = savingCell === cellKey
-
-                                        return (
-                                            <td key={col.key} className="px-3 py-2 whitespace-nowrap">
-                                                {col.editable ? (
-                                                    <div className="relative">
-                                                        <input
-                                                            type="text"
-                                                            defaultValue={value ?? ''}
-                                                            onBlur={(e) => handleCellEdit(row.sessionId, col.key, e.target.value)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    e.currentTarget.blur()
-                                                                }
-                                                            }}
-                                                            className="w-full px-2 py-1 border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                        />
-                                                        {isSaving && (
-                                                            <Loader2 className="w-4 h-4 animate-spin text-blue-600 absolute right-2 top-1/2 -translate-y-1/2" />
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-slate-800">{value ?? '-'}</span>
-                                                )}
-                                            </td>
-                                        )
-                                    })}
-                                    <td className="px-3 py-2 whitespace-nowrap">
-                                        <button
-                                            onClick={() => handleDeleteRow(row.sessionId, row.schoolName)}
-                                            disabled={savingCell === row.sessionId}
-                                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                            title="削除"
-                                        >
-                                            {savingCell === row.sessionId ? (
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="w-4 h-4" />
-                                            )}
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {filteredData.length === 0 && (
-                    <div className="text-center py-12 text-slate-500">
-                        {(searchSchoolName || searchYear || searchSession) ? '検索結果が見つかりませんでした' : 'データがありません'}
-                    </div>
-                )}
+                        </div>
+                    )
+                })}
             </div>
+
+            {filteredGroups.length === 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
+                    <p className="text-slate-500">データが見つかりませんでした</p>
+                </div>
+            )}
         </div>
     )
 }
