@@ -21,6 +21,8 @@ export default function NewRecordPage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [existingRecordId, setExistingRecordId] = useState<string | null>(null)
+    const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
 
     const supabase = createClient()
     const router = useRouter()
@@ -98,6 +100,27 @@ export default function NewRecordPage() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('ログインが必要です')
 
+            // 既存記録のチェック
+            const { data: existingRecords } = await supabase
+                .from('practice_records')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('exam_session_id', selectedExamSessionId)
+
+            if (existingRecords && existingRecords.length > 0 && !existingRecordId) {
+                // 既存記録がある場合、確認ダイアログを表示
+                setExistingRecordId(existingRecords[0].id)
+                setShowOverwriteConfirm(true)
+                setSaving(false)
+                return
+            }
+
+            // 上書きの場合、既存レコードを削除
+            if (existingRecordId) {
+                await supabase.from('practice_scores').delete().eq('practice_record_id', existingRecordId)
+                await supabase.from('practice_records').delete().eq('id', existingRecordId)
+            }
+
             // 演習記録を作成
             const { data: record, error: recordError } = await supabase
                 .from('practice_records')
@@ -132,7 +155,22 @@ export default function NewRecordPage() {
             setError(err instanceof Error ? err.message : '保存に失敗しました')
         } finally {
             setSaving(false)
+            setExistingRecordId(null)
+            setShowOverwriteConfirm(false)
         }
+    }
+
+    const handleOverwrite = () => {
+        // existingRecordIdがセットされた状態でsubmitを再実行
+        const form = document.querySelector('form')
+        if (form) {
+            form.requestSubmit()
+        }
+    }
+
+    const handleCancelOverwrite = () => {
+        setShowOverwriteConfirm(false)
+        setExistingRecordId(null)
     }
 
     // 合計点の計算
@@ -276,6 +314,31 @@ export default function NewRecordPage() {
                     </div>
                 )}
 
+                {/* 上書き確認ダイアログ */}
+                {showOverwriteConfirm && (
+                    <div className="p-4 rounded-lg bg-amber-50 border border-amber-300 space-y-3">
+                        <p className="text-amber-800 font-medium">⚠️ この試験回の記録がすでに存在します</p>
+                        <p className="text-amber-700 text-sm">上書きすると以前の記録は削除されます。上書きしますか？</p>
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={handleOverwrite}
+                                disabled={saving}
+                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {saving ? '保存中...' : '上書きする'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCancelOverwrite}
+                                className="px-4 py-2 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium rounded-lg transition-colors"
+                            >
+                                キャンセル
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* エラー表示 */}
                 {error && (
                     <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
@@ -284,7 +347,7 @@ export default function NewRecordPage() {
                 )}
 
                 {/* 保存ボタン */}
-                {requiredSubjects.length > 0 && (
+                {requiredSubjects.length > 0 && !showOverwriteConfirm && (
                     <button
                         type="submit"
                         disabled={saving}
