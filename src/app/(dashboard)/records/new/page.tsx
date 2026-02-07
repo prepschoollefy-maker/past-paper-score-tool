@@ -91,8 +91,7 @@ export default function NewRecordPage() {
         setScores(newScores)
     }
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
+    const saveRecord = async (overwriteId: string | null = null) => {
         setError(null)
         setSaving(true)
 
@@ -100,25 +99,26 @@ export default function NewRecordPage() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('ログインが必要です')
 
-            // 既存記録のチェック
-            const { data: existingRecords } = await supabase
-                .from('practice_records')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('exam_session_id', selectedExamSessionId)
+            // 既存記録のチェック（上書きモードでない場合のみ）
+            if (!overwriteId) {
+                const { data: existingRecords } = await supabase
+                    .from('practice_records')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .eq('exam_session_id', selectedExamSessionId)
 
-            if (existingRecords && existingRecords.length > 0 && !existingRecordId) {
-                // 既存記録がある場合、確認ダイアログを表示
-                setExistingRecordId(existingRecords[0].id)
-                setShowOverwriteConfirm(true)
-                setSaving(false)
-                return
+                if (existingRecords && existingRecords.length > 0) {
+                    setExistingRecordId(existingRecords[0].id)
+                    setShowOverwriteConfirm(true)
+                    setSaving(false)
+                    return
+                }
             }
 
             // 上書きの場合、既存レコードを削除
-            if (existingRecordId) {
-                await supabase.from('practice_scores').delete().eq('practice_record_id', existingRecordId)
-                await supabase.from('practice_records').delete().eq('id', existingRecordId)
+            if (overwriteId) {
+                await supabase.from('practice_scores').delete().eq('practice_record_id', overwriteId)
+                await supabase.from('practice_records').delete().eq('id', overwriteId)
             }
 
             // 演習記録を作成
@@ -149,7 +149,6 @@ export default function NewRecordPage() {
 
             if (scoresError) throw scoresError
 
-            // 成功時のみリセット
             setExistingRecordId(null)
             setShowOverwriteConfirm(false)
 
@@ -162,12 +161,13 @@ export default function NewRecordPage() {
         }
     }
 
-    const handleOverwrite = () => {
-        // existingRecordIdがセットされた状態でsubmitを再実行
-        const form = document.querySelector('form')
-        if (form) {
-            form.requestSubmit()
-        }
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        await saveRecord(null)
+    }
+
+    const handleOverwrite = async () => {
+        await saveRecord(existingRecordId)
     }
 
     const handleCancelOverwrite = () => {
