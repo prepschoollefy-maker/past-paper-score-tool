@@ -51,7 +51,6 @@ export default function RegisterPage() {
         e.preventDefault()
         setError(null)
 
-        // バリデーション
         if (formData.password !== formData.passwordConfirm) {
             setError('パスワードが一致しません')
             return
@@ -115,19 +114,22 @@ export default function RegisterPage() {
         }
     }
 
+    const inputClass = "w-full px-4 py-3 bg-white border border-teal-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent transition-all"
+    const labelClass = "block text-sm font-medium text-teal-800 mb-1.5"
+
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-12 px-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-white to-teal-50 py-12 px-4">
             <div className="w-full max-w-lg">
-                <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-white/20">
+                <div className="bg-white rounded-2xl shadow-xl p-8 border border-teal-100">
                     <div className="text-center mb-8">
-                        <h1 className="text-3xl font-bold text-white mb-2">アカウント登録</h1>
-                        <p className="text-slate-300 text-sm">過去問得点管理ツールを始めましょう</p>
+                        <h1 className="text-3xl font-bold text-teal-700 mb-2">アカウント登録</h1>
+                        <p className="text-slate-500 text-sm">過去問得点管理ツールを始めましょう</p>
                     </div>
 
                     <form onSubmit={handleRegister} className="space-y-5">
                         {/* メールアドレス */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                            <label className={labelClass}>
                                 メールアドレス <span className="text-red-400">*</span>
                             </label>
                             <input
@@ -135,7 +137,7 @@ export default function RegisterPage() {
                                 value={formData.email}
                                 onChange={(e) => updateField('email', e.target.value)}
                                 required
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                className={inputClass}
                                 placeholder="example@email.com"
                             />
                         </div>
@@ -143,7 +145,7 @@ export default function RegisterPage() {
                         {/* パスワード */}
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                                <label className={labelClass}>
                                     パスワード <span className="text-red-400">*</span>
                                 </label>
                                 <input
@@ -151,12 +153,12 @@ export default function RegisterPage() {
                                     value={formData.password}
                                     onChange={(e) => updateField('password', e.target.value)}
                                     required
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={inputClass}
                                     placeholder="6文字以上"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                                <label className={labelClass}>
                                     パスワード確認 <span className="text-red-400">*</span>
                                 </label>
                                 <input
@@ -164,18 +166,18 @@ export default function RegisterPage() {
                                     value={formData.passwordConfirm}
                                     onChange={(e) => updateField('passwordConfirm', e.target.value)}
                                     required
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={inputClass}
                                     placeholder="再入力"
                                 />
                             </div>
                         </div>
 
                         {/* 区切り線 */}
-                        <div className="border-t border-white/10 pt-2"></div>
+                        <div className="border-t border-teal-100 pt-2"></div>
 
                         {/* 保護者氏名 */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                            <label className={labelClass}>
                                 保護者氏名 <span className="text-red-400">*</span>
                             </label>
                             <div className="grid grid-cols-2 gap-3">
@@ -184,7 +186,7 @@ export default function RegisterPage() {
                                     value={formData.parentLastName}
                                     onChange={(e) => updateField('parentLastName', e.target.value)}
                                     required
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={inputClass}
                                     placeholder="姓"
                                 />
                                 <input
@@ -192,7 +194,7 @@ export default function RegisterPage() {
                                     value={formData.parentFirstName}
                                     onChange={(e) => updateField('parentFirstName', e.target.value)}
                                     required
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={inputClass}
                                     placeholder="名"
                                 />
                             </div>
@@ -200,7 +202,7 @@ export default function RegisterPage() {
 
                         {/* 生徒名 */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                            <label className={labelClass}>
                                 生徒名 <span className="text-red-400">*</span>
                             </label>
                             <div className="grid grid-cols-2 gap-3">
@@ -209,7 +211,7 @@ export default function RegisterPage() {
                                     value={formData.studentLastName}
                                     onChange={(e) => updateField('studentLastName', e.target.value)}
                                     required
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={inputClass}
                                     placeholder="姓"
                                 />
                                 <input
@@ -217,7 +219,7 @@ export default function RegisterPage() {
                                     value={formData.studentFirstName}
                                     onChange={(e) => updateField('studentFirstName', e.target.value)}
                                     required
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={inputClass}
                                     placeholder="名"
                                 />
                             </div>
@@ -225,36 +227,36 @@ export default function RegisterPage() {
 
                         {/* 学年 */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                            <label className={labelClass}>
                                 学年 <span className="text-red-400">*</span>
                             </label>
                             <select
                                 value={formData.grade}
                                 onChange={(e) => updateField('grade', e.target.value)}
                                 required
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
+                                className={inputClass + " appearance-none"}
                             >
-                                <option value="" className="bg-slate-800">選択してください</option>
+                                <option value="">選択してください</option>
                                 {GRADES.map(g => (
-                                    <option key={g.value} value={g.value} className="bg-slate-800">{g.label}</option>
+                                    <option key={g.value} value={g.value}>{g.label}</option>
                                 ))}
                             </select>
                         </div>
 
                         {/* 通塾先 */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                            <label className={labelClass}>
                                 通塾先 <span className="text-red-400">*</span>
                             </label>
                             <select
                                 value={formData.cramSchool}
                                 onChange={(e) => updateField('cramSchool', e.target.value)}
                                 required
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none"
+                                className={inputClass + " appearance-none"}
                             >
-                                <option value="" className="bg-slate-800">選択してください</option>
+                                <option value="">選択してください</option>
                                 {CRAM_SCHOOLS.map(school => (
-                                    <option key={school} value={school} className="bg-slate-800">{school}</option>
+                                    <option key={school} value={school}>{school}</option>
                                 ))}
                             </select>
                             {formData.cramSchool === 'その他' && (
@@ -262,7 +264,7 @@ export default function RegisterPage() {
                                     type="text"
                                     value={formData.cramSchoolOther}
                                     onChange={(e) => updateField('cramSchoolOther', e.target.value)}
-                                    className="w-full mt-2 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={inputClass + " mt-2"}
                                     placeholder="塾名を入力してください"
                                 />
                             )}
@@ -270,7 +272,7 @@ export default function RegisterPage() {
 
                         {/* エラー */}
                         {error && (
-                            <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-200 text-sm">
+                            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
                                 {error}
                             </div>
                         )}
@@ -279,7 +281,7 @@ export default function RegisterPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-semibold rounded-lg shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full py-3 px-4 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white font-semibold rounded-lg shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? '登録中...' : 'アカウントを作成'}
                         </button>
@@ -287,16 +289,16 @@ export default function RegisterPage() {
 
                     {/* ログインリンク */}
                     <div className="mt-6 text-center">
-                        <p className="text-slate-400 text-sm">
+                        <p className="text-slate-500 text-sm">
                             既にアカウントをお持ちの方は{' '}
-                            <Link href="/login" className="text-blue-400 hover:text-blue-300 underline transition-colors">
+                            <Link href="/login" className="text-teal-600 hover:text-teal-500 underline transition-colors">
                                 ログイン
                             </Link>
                         </p>
                     </div>
                 </div>
 
-                <p className="text-center text-slate-500 text-xs mt-6">
+                <p className="text-center text-slate-400 text-xs mt-6">
                     © 2026 過去問得点管理システム
                 </p>
             </div>

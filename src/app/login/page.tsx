@@ -33,17 +33,17 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-white to-teal-50">
             <div className="w-full max-w-md p-8">
-                <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-white/20">
+                <div className="bg-white rounded-2xl shadow-xl p-8 border border-teal-100">
                     <div className="text-center mb-8">
-                        <h1 className="text-3xl font-bold text-white mb-2">過去問得点管理</h1>
-                        <p className="text-slate-300 text-sm">ログインして利用を開始</p>
+                        <h1 className="text-3xl font-bold text-teal-700 mb-2">過去問得点管理</h1>
+                        <p className="text-slate-500 text-sm">ログインして利用を開始</p>
                     </div>
 
                     <form onSubmit={handleLogin} className="space-y-6">
                         <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-slate-200 mb-2">
+                            <label htmlFor="email" className="block text-sm font-medium text-teal-800 mb-2">
                                 メールアドレス
                             </label>
                             <input
@@ -52,13 +52,13 @@ export default function LoginPage() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                className="w-full px-4 py-3 bg-white border border-teal-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent transition-all"
                                 placeholder="example@email.com"
                             />
                         </div>
 
                         <div>
-                            <label htmlFor="password" className="block text-sm font-medium text-slate-200 mb-2">
+                            <label htmlFor="password" className="block text-sm font-medium text-teal-800 mb-2">
                                 パスワード
                             </label>
                             <input
@@ -67,13 +67,13 @@ export default function LoginPage() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                className="w-full px-4 py-3 bg-white border border-teal-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent transition-all"
                                 placeholder="••••••••"
                             />
                         </div>
 
                         {error && (
-                            <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-200 text-sm">
+                            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
                                 {error}
                             </div>
                         )}
@@ -81,7 +81,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-semibold rounded-lg shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full py-3 px-4 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white font-semibold rounded-lg shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? 'ログイン中...' : 'ログイン'}
                         </button>
@@ -89,16 +89,16 @@ export default function LoginPage() {
 
                     {/* 登録リンク */}
                     <div className="mt-6 text-center">
-                        <p className="text-slate-400 text-sm">
+                        <p className="text-slate-500 text-sm">
                             アカウントをお持ちでない方は{' '}
-                            <Link href="/register" className="text-blue-400 hover:text-blue-300 underline transition-colors">
+                            <Link href="/register" className="text-teal-600 hover:text-teal-500 underline transition-colors">
                                 新規登録
                             </Link>
                         </p>
                     </div>
                 </div>
 
-                <p className="text-center text-slate-500 text-xs mt-6">
+                <p className="text-center text-slate-400 text-xs mt-6">
                     © 2026 過去問得点管理システム
                 </p>
             </div>
