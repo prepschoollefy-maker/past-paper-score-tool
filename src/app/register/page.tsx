@@ -89,7 +89,7 @@ export default function RegisterPage() {
 
         const studentName = `${formData.studentLastName} ${formData.studentFirstName}`
 
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: formData.email,
             password: formData.password,
             options: {
@@ -114,6 +114,22 @@ export default function RegisterPage() {
             }
             setLoading(false)
         } else {
+            // トリガーが対応しない場合に備えて、profilesテーブルを直接更新
+            if (signUpData.user) {
+                await supabase
+                    .from('profiles')
+                    .update({
+                        name: studentName,
+                        student_last_name: formData.studentLastName,
+                        student_first_name: formData.studentFirstName,
+                        parent_last_name: formData.parentLastName,
+                        parent_first_name: formData.parentFirstName,
+                        grade: formData.grade,
+                        cram_school: formData.cramSchool,
+                        cram_school_other: formData.cramSchool === 'その他' ? formData.cramSchoolOther : null,
+                    })
+                    .eq('id', signUpData.user.id)
+            }
             router.push('/dashboard')
             router.refresh()
         }
