@@ -50,6 +50,8 @@ export interface OfficialData {
     exam_session_id: string
     subject: OfficialSubject
     passing_min: number | null
+    passing_min_2: number | null   // 合格最低点※
+    passing_max: number | null     // 合格最高点
     passer_avg: number | null
     applicant_avg: number | null
     source_note: string | null

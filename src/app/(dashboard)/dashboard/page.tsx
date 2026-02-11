@@ -14,9 +14,11 @@ interface ExamSessionWithData {
     studentMaxScore: number | null
     subjectScores: { subject: string; score: number; max_score: number }[]
     passingMin: number | null
+    passingMin2: number | null
+    passingMax: number | null
     passingAvg: number | null
     applicantAvg: number | null
-    subjectOfficialData: { subject: string; passingMin: number | null; passingAvg: number | null }[]
+    subjectOfficialData: { subject: string; passingMin: number | null; passingMin2: number | null; passingMax: number | null; passingAvg: number | null }[]
 }
 
 export default function DashboardPage() {
@@ -137,6 +139,8 @@ export default function DashboardPage() {
                     .map(d => ({
                         subject: d.subject,
                         passingMin: d.passing_min,
+                        passingMin2: d.passing_min_2,
+                        passingMax: d.passing_max,
                         passingAvg: d.passer_avg,
                     }))
 
@@ -170,6 +174,8 @@ export default function DashboardPage() {
                     studentMaxScore,
                     subjectScores,
                     passingMin: totalOfficial?.passing_min || null,
+                    passingMin2: totalOfficial?.passing_min_2 || null,
+                    passingMax: totalOfficial?.passing_max || null,
                     passingAvg: totalOfficial?.passer_avg || null,
                     applicantAvg: totalOfficial?.applicant_avg || null,
                     subjectOfficialData,
@@ -206,6 +212,8 @@ export default function DashboardPage() {
                 year: `${d.year}年`,
                 あなたの得点: d.studentScore,
                 合格最低点: d.passingMin,
+                '合格最低点※': d.passingMin2,
+                合格最高点: d.passingMax,
                 合格者平均: d.passingAvg,
             }
         } else {
@@ -215,16 +223,24 @@ export default function DashboardPage() {
                 year: `${d.year}年`,
                 あなたの得点: subjectScore?.score || null,
                 合格最低点: subjectOfficial?.passingMin || null,
+                '合格最低点※': subjectOfficial?.passingMin2 || null,
+                合格最高点: subjectOfficial?.passingMax || null,
                 合格者平均: subjectOfficial?.passingAvg || null,
             }
         }
     })
+
+    // 条件付き列表示: データが1件でもあるか判定
+    const hasPassingMin2 = chartData.some(d => d['合格最低点※'] != null)
+    const hasPassingMax = chartData.some(d => d.合格最高点 != null)
 
     // 最高点（Y軸の上限用）
     const maxScore = Math.max(
         ...chartData.map(d => Math.max(
             (d.あなたの得点 as number) || 0,
             (d.合格最低点 as number) || 0,
+            (d['合格最低点※'] as number) || 0,
+            (d.合格最高点 as number) || 0,
             (d.合格者平均 as number) || 0
         )),
         100
@@ -384,6 +400,31 @@ export default function DashboardPage() {
                                             connectNulls
                                         />
 
+                                        {/* 合格最低点※（折れ線・データがある場合のみ） */}
+                                        {hasPassingMin2 && (
+                                            <Line
+                                                type="monotone"
+                                                dataKey="合格最低点※"
+                                                stroke="#2563eb"
+                                                strokeWidth={2}
+                                                strokeDasharray="5 5"
+                                                dot={{ fill: '#2563eb', r: 4 }}
+                                                connectNulls
+                                            />
+                                        )}
+
+                                        {/* 合格最高点（折れ線・データがある場合のみ） */}
+                                        {hasPassingMax && (
+                                            <Line
+                                                type="monotone"
+                                                dataKey="合格最高点"
+                                                stroke="#16a34a"
+                                                strokeWidth={2}
+                                                dot={{ fill: '#16a34a', r: 4 }}
+                                                connectNulls
+                                            />
+                                        )}
+
                                         {/* 合格者平均（折れ線） */}
                                         <Line
                                             type="monotone"
@@ -411,6 +452,8 @@ export default function DashboardPage() {
                                         <th className="px-4 py-3 text-left text-xs font-medium text-teal-800 uppercase whitespace-nowrap">年度</th>
                                         <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">あなたの得点</th>
                                         <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">合格最低点</th>
+                                        {hasPassingMin2 && <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">特待最低点</th>}
+                                        {hasPassingMax && <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">合格最高点</th>}
                                         <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">合格者平均</th>
                                         <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">受験者平均</th>
                                         <th className="px-4 py-3 text-center text-xs font-medium text-teal-800 uppercase whitespace-nowrap">判定</th>
@@ -420,12 +463,16 @@ export default function DashboardPage() {
                                     {examData.map(d => {
                                         let score: number | null = null
                                         let passingMin: number | null = null
+                                        let passingMin2: number | null = null
+                                        let passingMax: number | null = null
                                         let passingAvg: number | null = null
                                         let applicantAvg: number | null = null
 
                                         if (selectedSubject === '総合') {
                                             score = d.studentScore
                                             passingMin = d.passingMin
+                                            passingMin2 = d.passingMin2
+                                            passingMax = d.passingMax
                                             passingAvg = d.passingAvg
                                             applicantAvg = d.applicantAvg
                                         } else {
@@ -433,6 +480,8 @@ export default function DashboardPage() {
                                             const subjectOfficial = d.subjectOfficialData.find(s => s.subject === selectedSubject)
                                             score = subjectScore?.score || null
                                             passingMin = subjectOfficial?.passingMin || null
+                                            passingMin2 = subjectOfficial?.passingMin2 || null
+                                            passingMax = subjectOfficial?.passingMax || null
                                             passingAvg = subjectOfficial?.passingAvg || null
                                         }
 
@@ -450,6 +499,16 @@ export default function DashboardPage() {
                                                 <td className="px-4 py-3 text-center text-sm text-teal-800 whitespace-nowrap">
                                                     {passingMin !== null ? `${passingMin}点` : '-'}
                                                 </td>
+                                                {hasPassingMin2 && (
+                                                    <td className="px-4 py-3 text-center text-sm text-blue-700 whitespace-nowrap">
+                                                        {passingMin2 !== null ? `${passingMin2}点` : '-'}
+                                                    </td>
+                                                )}
+                                                {hasPassingMax && (
+                                                    <td className="px-4 py-3 text-center text-sm text-green-700 whitespace-nowrap">
+                                                        {passingMax !== null ? `${passingMax}点` : '-'}
+                                                    </td>
+                                                )}
                                                 <td className="px-4 py-3 text-center text-sm text-teal-800 whitespace-nowrap">
                                                     {passingAvg !== null ? `${passingAvg}点` : '-'}
                                                 </td>

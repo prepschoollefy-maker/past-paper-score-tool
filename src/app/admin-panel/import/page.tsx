@@ -13,6 +13,8 @@ interface ParsedRow {
     subjects: { name: string; maxScore: number }[]
     officialData: {
         passingMin?: number
+        passingMin2?: number
+        passingMax?: number
         passingAvg?: number
         applicantAvg?: number
         subjectData: { subject: string; passingAvg?: number; applicantAvg?: number }[]
@@ -81,6 +83,8 @@ export default function ImportPage() {
                 subjects,
                 officialData: {
                     passingMin: getNumber('合格最低点'),
+                    passingMin2: getNumber('合格最低点※'),
+                    passingMax: getNumber('合格最高点'),
                     passingAvg: getNumber('合格者平均'),
                     applicantAvg: getNumber('受験者平均'),
                     subjectData,
@@ -192,15 +196,19 @@ export default function ImportPage() {
                     exam_session_id: string
                     subject: string
                     passing_min?: number
+                    passing_min_2?: number
+                    passing_max?: number
                     passer_avg?: number
                     applicant_avg?: number
                 }[] = []
 
-                if (row.officialData.passingMin || row.officialData.passingAvg || row.officialData.applicantAvg) {
+                if (row.officialData.passingMin || row.officialData.passingMin2 || row.officialData.passingMax || row.officialData.passingAvg || row.officialData.applicantAvg) {
                     officialRows.push({
                         exam_session_id: sessionId,
                         subject: '総合',
                         passing_min: row.officialData.passingMin,
+                        passing_min_2: row.officialData.passingMin2,
+                        passing_max: row.officialData.passingMax,
                         passer_avg: row.officialData.passingAvg,
                         applicant_avg: row.officialData.applicantAvg,
                     })

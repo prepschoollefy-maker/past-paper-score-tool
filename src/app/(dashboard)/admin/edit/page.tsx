@@ -20,6 +20,8 @@ interface FlattenedRow {
     英語配点?: number
     // 総合データ
     合格最低点?: number
+    '合格最低点※'?: number
+    合格最高点?: number
     合格者平均?: number
     受験者平均?: number
     // 科目別平均
@@ -61,6 +63,8 @@ const SUBJECT_FIELDS = [
     { key: '英語合平均', label: '英語合平均' },
     { key: '英語受平均', label: '英語受平均' },
     { key: '合格最低点', label: '合格最低点' },
+    { key: '合格最低点※', label: '合格最低点※' },
+    { key: '合格最高点', label: '合格最高点' },
     { key: '合格者平均', label: '合格者平均' },
     { key: '受験者平均', label: '受験者平均' },
 ] as const
@@ -110,7 +114,7 @@ export default function EditPage() {
                         session_label,
                         schools(id, name),
                         required_subjects(subject, max_score),
-                        official_data(subject, passing_min, passer_avg, applicant_avg)
+                        official_data(subject, passing_min, passing_min_2, passing_max, passer_avg, applicant_avg)
                     `)
                     .range(start, end)
 
@@ -166,6 +170,8 @@ export default function EditPage() {
                 const overall = officialData.find((d: any) => d.subject === '総合')
                 if (overall) {
                     row['合格最低点'] = overall.passing_min as unknown as number
+                    row['合格最低点※'] = overall.passing_min_2 as unknown as number
+                    row['合格最高点'] = overall.passing_max as unknown as number
                     row['合格者平均'] = overall.passer_avg as unknown as number
                     row['受験者平均'] = overall.applicant_avg as unknown as number
                 }
@@ -294,9 +300,11 @@ export default function EditPage() {
                 }
             }
             // 総合データの更新
-            else if (['合格最低点', '合格者平均', '受験者平均'].includes(columnKey)) {
+            else if (['合格最低点', '合格最低点※', '合格最高点', '合格者平均', '受験者平均'].includes(columnKey)) {
                 const fieldMap = {
                     '合格最低点': 'passing_min',
+                    '合格最低点※': 'passing_min_2',
+                    '合格最高点': 'passing_max',
                     '合格者平均': 'passer_avg',
                     '受験者平均': 'applicant_avg',
                 } as const
@@ -511,7 +519,7 @@ export default function EditPage() {
             '国語合平均', '国語受平均', '算数合平均', '算数受平均',
             '社会合平均', '社会受平均', '理科合平均', '理科受平均',
             '英語合平均', '英語受平均',
-            '合格最低点', '合格者平均', '受験者平均'
+            '合格最低点', '合格最低点※', '合格最高点', '合格者平均', '受験者平均'
         ]
 
         const rows = filteredGroups.flatMap(group =>
@@ -536,6 +544,8 @@ export default function EditPage() {
                 row['英語合平均'] ?? '',
                 row['英語受平均'] ?? '',
                 row['合格最低点'] ?? '',
+                row['合格最低点※'] ?? '',
+                row['合格最高点'] ?? '',
                 row['合格者平均'] ?? '',
                 row['受験者平均'] ?? ''
             ])

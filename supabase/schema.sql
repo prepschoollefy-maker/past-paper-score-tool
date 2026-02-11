@@ -57,6 +57,8 @@ CREATE TABLE official_data (
   exam_session_id UUID NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE,
   subject TEXT NOT NULL CHECK (subject IN ('総合', '算数', '国語', '理科', '社会', '英語')),
   passing_min INTEGER,          -- 合格最低点（任意）
+  passing_min_2 INTEGER,        -- 合格最低点※（任意）
+  passing_max INTEGER,          -- 合格最高点（任意）
   passer_avg DECIMAL(5,1),      -- 合格者平均点（任意）
   applicant_avg DECIMAL(5,1),   -- 受験者平均点（任意）
   source_note TEXT,             -- 出典メモ（任意）
