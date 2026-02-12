@@ -552,7 +552,7 @@ function ScheduleTab() {
             {/* 学校追加モーダル */}
             {addModal && (
                 <AddBranchModal
-                    selections={mySelections}
+                    mySelections={mySelections}
                     sourceId={addModal.sourceId}
                     conditionType={addModal.conditionType}
                     onSelect={(examSessionId) => addToBranch(examSessionId, addModal.sourceId, addModal.conditionType)}
@@ -724,34 +724,74 @@ function FlowNodeRenderer({
 // ============================================================
 
 function AddBranchModal({
-    selections,
+    mySelections,
     sourceId,
     conditionType,
     onSelect,
     onClose,
 }: {
-    selections: UserExamSelection[]
+    mySelections: UserExamSelection[]
     sourceId: string
     conditionType: 'pass' | 'fail'
     onSelect: (examSessionId: string) => void
     onClose: () => void
 }) {
-    // 表示する候補: 自分自身と、既にこのパスに割り当て済みの学校を除く
+    const [examSessions, setExamSessions] = useState<ExamSession[]>([])
+    const [searchQuery, setSearchQuery] = useState('')
+    const [loading, setLoading] = useState(true)
+    const supabase = createClient()
+
+    useEffect(() => {
+        const fetchSessions = async () => {
+            const { data } = await supabase
+                .from('exam_sessions')
+                .select('*, school:schools(*)')
+                .not('test_date', 'is', null)
+                .order('test_date')
+            if (data) setExamSessions(data)
+            setLoading(false)
+        }
+        fetchSessions()
+    }, [supabase])
+
+    const sourceSelection = mySelections.find(s => s.id === sourceId)
+    const sourceExamSessionId = sourceSelection?.exam_session_id
     const alreadyOnThisPath = new Set(
-        selections
+        mySelections
             .filter(s => s.condition_source_id === sourceId && s.condition_type === conditionType)
             .map(s => s.exam_session_id)
     )
-    const sourceSelection = selections.find(s => s.id === sourceId)
-    const candidates = selections.filter(s =>
-        s.id !== sourceId &&
-        !alreadyOnThisPath.has(s.exam_session_id) &&
-        s.exam_session?.test_date
-    ).sort(sortByDateAndPeriod)
+    const selectedIds = new Set(mySelections.map(s => s.exam_session_id))
+
+    const filtered = useMemo(() => {
+        const q = searchQuery.toLowerCase()
+        return examSessions.filter(s => {
+            if (s.id === sourceExamSessionId) return false
+            if (alreadyOnThisPath.has(s.id)) return false
+            const name = s.school?.name || ''
+            const label = s.session_label || ''
+            return name.toLowerCase().includes(q) || label.toLowerCase().includes(q)
+        })
+    }, [examSessions, searchQuery, sourceExamSessionId, alreadyOnThisPath])
+
+    const grouped = useMemo(() => {
+        const groups: { key: string; sessions: ExamSession[] }[] = []
+        const map = new Map<string, ExamSession[]>()
+        for (const s of filtered) {
+            const key = getDateGroup(s.test_date!)
+            if (!map.has(key)) {
+                map.set(key, [])
+                groups.push({ key, sessions: map.get(key)! })
+            }
+            map.get(key)!.push(s)
+        }
+        return groups
+    }, [filtered])
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                {/* ヘッダー */}
                 <div className="flex items-center justify-between p-4 border-b border-teal-100">
                     <div>
                         <h3 className="text-lg font-bold text-teal-700 flex items-center gap-2">
@@ -771,34 +811,78 @@ function AddBranchModal({
                         <X className="w-5 h-5" />
                     </button>
                 </div>
-                <div className="overflow-y-auto p-3 space-y-1.5">
-                    {candidates.length === 0 ? (
+
+                {/* 検索バー */}
+                <div className="px-4 py-3 border-b border-teal-50">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-300" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder="学校名で検索..."
+                            className="w-full pl-9 pr-4 py-2 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-700 placeholder-teal-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
+                {/* 学校リスト */}
+                <div className="overflow-y-auto flex-1">
+                    {loading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-400" />
+                        </div>
+                    ) : grouped.length === 0 ? (
                         <p className="text-teal-300 text-center py-8 text-sm">
-                            追加できる学校がありません。<br />「受験校リスト」タブで学校を選択してください。
+                            {searchQuery ? '該当する学校がありません' : '試験データがありません'}
                         </p>
                     ) : (
-                        candidates.map(sel => (
-                            <button
-                                key={sel.id}
-                                onClick={() => onSelect(sel.exam_session_id)}
-                                className="w-full text-left px-4 py-3 rounded-lg hover:bg-teal-50 active:bg-teal-100 transition-colors flex items-center gap-3"
-                            >
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
-                                    sel.exam_session?.time_period === '午後' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
-                                }`}>
-                                    {sel.exam_session?.test_date
-                                        ? `${new Date(sel.exam_session.test_date + 'T00:00:00').getMonth() + 1}/${new Date(sel.exam_session.test_date + 'T00:00:00').getDate()}`
-                                        : '?'}
+                        grouped.map(group => (
+                            <div key={group.key}>
+                                <div className="px-4 py-1.5 bg-teal-50/80 text-xs font-bold text-teal-500 sticky top-0">
+                                    {group.key}
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-teal-700 text-sm truncate">{sel.exam_session?.school?.name}</div>
-                                    <div className="text-xs text-teal-400">
-                                        {sel.exam_session?.session_label} {sel.exam_session?.time_period}
-                                        {sel.exam_session?.sapix != null && ` · S${sel.exam_session.sapix}`}
-                                    </div>
-                                </div>
-                                <Plus className="w-5 h-5 text-teal-300 flex-shrink-0" />
-                            </button>
+                                {group.sessions.map(session => {
+                                    const isAlreadySelected = selectedIds.has(session.id)
+                                    return (
+                                        <button
+                                            key={session.id}
+                                            onClick={() => onSelect(session.id)}
+                                            className="w-full text-left px-4 py-2.5 hover:bg-teal-50 active:bg-teal-100 transition-colors flex items-center gap-3 border-b border-teal-50"
+                                        >
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
+                                                session.time_period === '午後' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
+                                            }`}>
+                                                {session.time_period === '午後' ? '午後' : '午前'}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-semibold text-teal-700 text-sm truncate">{session.school?.name}</span>
+                                                    {isAlreadySelected && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-teal-100 text-teal-500 rounded-full flex-shrink-0">選択済</span>
+                                                    )}
+                                                    {session.gender_type && (
+                                                        <span className={`text-[10px] px-1 py-0.5 rounded flex-shrink-0 ${
+                                                            session.gender_type === '男子校' ? 'bg-blue-100 text-blue-600' :
+                                                            session.gender_type === '女子校' ? 'bg-pink-100 text-pink-600' :
+                                                            'bg-purple-100 text-purple-600'
+                                                        }`}>
+                                                            {session.gender_type === '共学' ? '共' : session.gender_type[0]}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-teal-400 flex items-center gap-1.5">
+                                                    <span>{session.session_label}</span>
+                                                    <span>{session.exam_subjects_label}</span>
+                                                    {session.yotsuya_80 != null && <span>Y{session.yotsuya_80}</span>}
+                                                </div>
+                                            </div>
+                                            <Plus className="w-5 h-5 text-teal-300 flex-shrink-0" />
+                                        </button>
+                                    )
+                                })}
+                            </div>
                         ))
                     )}
                 </div>
