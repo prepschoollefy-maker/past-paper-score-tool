@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { ExamSession, UserExamSelection, SchedulePlan, ScheduleEntry, ConditionType } from '@/types/database'
+import type { ExamSession, UserExamSelection } from '@/types/database'
 import {
-    Search, Plus, Check, Trash2, CalendarDays, ListChecks,
-    CheckCircle, XCircle, ChevronDown, ChevronRight, X, MapPin, Clock, TrendingUp, GitBranch
+    Search, Plus, Check, CalendarDays, ListChecks,
+    CheckCircle, XCircle, ChevronDown, ChevronRight, X, MapPin, Clock, GitBranch
 } from 'lucide-react'
 
 type Tab = 'selections' | 'schedule'
@@ -60,11 +60,6 @@ function formatDateLabel(dateStr: string): string {
     const day = d.getDate()
     const dow = DAY_NAMES[d.getDay()]
     return `${m}/${day}(${dow})`
-}
-
-function formatShortDate(dateStr: string): string {
-    const d = new Date(dateStr + 'T00:00:00')
-    return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
 function getDateGroup(dateStr: string): string {
@@ -382,45 +377,71 @@ function DetailItem({ icon, label, value }: { icon?: React.ReactNode; label: str
 }
 
 // ============================================================
-// スケジュールボードタブ（カレンダー型）
+// フローチャート型定義 & ツリー構築
+// ============================================================
+
+type FlowNode = {
+    type: 'exam'
+    session: ExamSession
+    selectionId: string
+    branching: boolean
+    passPath: FlowNode | null
+    failPath: FlowNode | null
+    next: FlowNode | null
+} | {
+    type: 'terminal'
+    label: string
+}
+
+function buildFlowTree(selections: UserExamSelection[]): FlowNode | null {
+    const sorted = [...selections]
+        .filter(s => s.exam_session?.test_date)
+        .sort((a, b) => {
+            const dateA = a.exam_session!.test_date!
+            const dateB = b.exam_session!.test_date!
+            if (dateA !== dateB) return dateA.localeCompare(dateB)
+            const pA = a.exam_session!.time_period === '午後' ? 1 : 0
+            const pB = b.exam_session!.time_period === '午後' ? 1 : 0
+            return pA - pB
+        })
+    return buildChain(sorted, 0)
+}
+
+function buildChain(sorted: UserExamSelection[], index: number): FlowNode | null {
+    if (index >= sorted.length) return null
+    const sel = sorted[index]
+    const isBranching = sel.on_pass_action === 'end'
+
+    if (isBranching) {
+        return {
+            type: 'exam',
+            session: sel.exam_session!,
+            selectionId: sel.id,
+            branching: true,
+            passPath: { type: 'terminal', label: '受験終了' },
+            failPath: buildChain(sorted, index + 1),
+            next: null,
+        }
+    }
+    return {
+        type: 'exam',
+        session: sel.exam_session!,
+        selectionId: sel.id,
+        branching: false,
+        passPath: null,
+        failPath: null,
+        next: buildChain(sorted, index + 1),
+    }
+}
+
+// ============================================================
+// スケジュールタブ（フローチャート）
 // ============================================================
 
 function ScheduleTab() {
-    const [plans, setPlans] = useState<SchedulePlan[]>([])
-    const [activePlanId, setActivePlanId] = useState<string | null>(null)
-    const [entries, setEntries] = useState<ScheduleEntry[]>([])
     const [mySelections, setMySelections] = useState<UserExamSelection[]>([])
     const [loading, setLoading] = useState(true)
-    const [showAddModal, setShowAddModal] = useState(false)
-    const [addTarget, setAddTarget] = useState<{ date: string; period: string; conditionType: ConditionType; conditionSourceId: string | null }>({ date: '', period: '午前', conditionType: 'default', conditionSourceId: null })
-    const [newPlanName, setNewPlanName] = useState('')
-    const [showNewPlanInput, setShowNewPlanInput] = useState(false)
-
     const supabase = createClient()
-
-    const fetchPlans = useCallback(async () => {
-        const { data } = await supabase
-            .from('schedule_plans')
-            .select('*')
-            .order('created_at', { ascending: false })
-        if (data) {
-            setPlans(data)
-            if (data.length > 0 && !activePlanId) {
-                const active = data.find(p => p.is_active) || data[0]
-                setActivePlanId(active.id)
-            }
-        }
-    }, [supabase, activePlanId])
-
-    const fetchEntries = useCallback(async (planId: string) => {
-        const { data } = await supabase
-            .from('schedule_entries')
-            .select('*, exam_session:exam_sessions(*, school:schools(*))')
-            .eq('plan_id', planId)
-            .order('slot_date')
-            .order('slot_period')
-        if (data) setEntries(data)
-    }, [supabase])
 
     const fetchSelections = useCallback(async () => {
         const { data } = await supabase
@@ -428,442 +449,156 @@ function ScheduleTab() {
             .select('*, exam_session:exam_sessions(*, school:schools(*))')
             .order('created_at')
         if (data) setMySelections(data)
+        setLoading(false)
     }, [supabase])
 
-    useEffect(() => {
-        Promise.all([fetchPlans(), fetchSelections()]).then(() => setLoading(false))
-    }, [fetchPlans, fetchSelections])
+    useEffect(() => { fetchSelections() }, [fetchSelections])
 
-    useEffect(() => {
-        if (activePlanId) fetchEntries(activePlanId)
-    }, [activePlanId, fetchEntries])
-
-    const createPlan = async () => {
-        const name = newPlanName.trim()
-        if (!name) return
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-        const { data } = await supabase
-            .from('schedule_plans')
-            .insert({ user_id: user.id, name, is_active: plans.length === 0 })
-            .select()
-            .single()
-        if (data) {
-            setPlans(prev => [data, ...prev])
-            setActivePlanId(data.id)
-            setEntries([])
-            setNewPlanName('')
-            setShowNewPlanInput(false)
-        }
-    }
-
-    const deletePlan = async (planId: string) => {
-        if (!confirm('このプランを削除しますか？')) return
-        await supabase.from('schedule_plans').delete().eq('id', planId)
-        setPlans(prev => prev.filter(p => p.id !== planId))
-        if (activePlanId === planId) {
-            const remaining = plans.filter(p => p.id !== planId)
-            setActivePlanId(remaining.length > 0 ? remaining[0].id : null)
-            setEntries([])
-        }
-    }
-
-    const openAddModal = (date: string, period: string, conditionType: ConditionType, conditionSourceId: string | null) => {
-        setAddTarget({ date, period, conditionType, conditionSourceId })
-        setShowAddModal(true)
-    }
-
-    const addEntry = async (examSessionId: string) => {
-        if (!activePlanId) return
-        const { error } = await supabase.from('schedule_entries').insert({
-            plan_id: activePlanId,
-            slot_date: addTarget.date,
-            slot_period: addTarget.period,
-            exam_session_id: examSessionId,
-            condition_type: addTarget.conditionType,
-            condition_source_id: addTarget.conditionSourceId,
-        })
+    const toggleBranching = async (selectionId: string, currentAction: string) => {
+        const newAction = currentAction === 'end' ? 'continue' : 'end'
+        const { error } = await supabase
+            .from('user_exam_selections')
+            .update({ on_pass_action: newAction })
+            .eq('id', selectionId)
         if (!error) {
-            fetchEntries(activePlanId)
-            setShowAddModal(false)
+            setMySelections(prev => prev.map(s =>
+                s.id === selectionId ? { ...s, on_pass_action: newAction } : s
+            ))
         }
     }
 
-    const addNoteEntry = async (date: string, period: string, note: string, conditionType: ConditionType, conditionSourceId: string | null) => {
-        if (!activePlanId) return
-        await supabase.from('schedule_entries').insert({
-            plan_id: activePlanId,
-            slot_date: date,
-            slot_period: period,
-            exam_session_id: null,
-            condition_type: conditionType,
-            condition_source_id: conditionSourceId,
-            note,
-        })
-        fetchEntries(activePlanId)
-    }
-
-    const removeEntry = async (entryId: string) => {
-        await supabase.from('schedule_entries').delete().eq('id', entryId)
-        if (activePlanId) fetchEntries(activePlanId)
-    }
-
-    const toggleBranching = async (entryId: string, current: boolean) => {
-        await supabase.from('schedule_entries').update({ has_branching: !current }).eq('id', entryId)
-        if (activePlanId) fetchEntries(activePlanId)
-    }
-
-    // カレンダー日付を生成
-    const calendarDates = useMemo(() => {
-        const dateSet = new Set<string>()
-        // 選択校の日付
-        mySelections.forEach(s => {
-            if (s.exam_session?.test_date) dateSet.add(s.exam_session.test_date)
-        })
-        // エントリの日付
-        entries.forEach(e => dateSet.add(e.slot_date))
-        // 標準日程（2月1日〜5日）
-        const year = new Date().getFullYear()
-        for (let d = 1; d <= 5; d++) {
-            dateSet.add(`${year}-02-${String(d).padStart(2, '0')}`)
-        }
-        return Array.from(dateSet).sort()
-    }, [mySelections, entries])
-
-    // 分岐ソース（has_branching=trueのエントリ）を取得
-    const branchingSources = useMemo(() => {
-        return entries.filter(e => e.has_branching)
-    }, [entries])
-
-    // 特定スロットのエントリを取得
-    const getSlotEntries = useCallback((date: string, period: string): ScheduleEntry[] => {
-        return entries.filter(e => e.slot_date === date && e.slot_period === period)
-    }, [entries])
-
-    // 特定スロットより前の分岐ソースを取得
-    const getActiveBranchingSources = useCallback((date: string, period: string): ScheduleEntry[] => {
-        return branchingSources.filter(e => {
-            if (e.slot_date < date) return true
-            if (e.slot_date === date && period === '午後' && e.slot_period === '午前') return true
-            return false
-        })
-    }, [branchingSources])
+    const flowTree = useMemo(() => buildFlowTree(mySelections), [mySelections])
 
     if (loading) return <Loading />
 
-    return (
-        <div className="space-y-4">
-            {/* プラン管理 */}
-            <div className="bg-white rounded-xl shadow-md border border-teal-200 p-4">
-                {plans.length > 0 && (
-                    <div className="flex items-center gap-2 mb-3">
-                        <div className="relative flex-1">
-                            <select
-                                value={activePlanId || ''}
-                                onChange={e => setActivePlanId(e.target.value)}
-                                className="w-full appearance-none bg-teal-50 border border-teal-200 rounded-lg px-4 py-2.5 pr-10 text-teal-700 font-medium focus:outline-none focus:ring-2 focus:ring-teal-400"
-                            >
-                                {plans.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-400 pointer-events-none" />
-                        </div>
-                        {activePlanId && (
-                            <button
-                                onClick={() => deletePlan(activePlanId)}
-                                className="p-2.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </button>
-                        )}
-                    </div>
-                )}
-                {showNewPlanInput ? (
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="text"
-                            value={newPlanName}
-                            onChange={e => setNewPlanName(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && createPlan()}
-                            placeholder="プラン名（例: 安全重視プラン）"
-                            className="flex-1 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2.5 text-sm text-teal-700 placeholder-teal-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
-                            autoFocus
-                        />
-                        <button onClick={createPlan} disabled={!newPlanName.trim()} className="px-4 py-2.5 bg-teal-400 text-white rounded-lg text-sm hover:bg-teal-500 disabled:opacity-50 transition-colors">作成</button>
-                        <button onClick={() => { setShowNewPlanInput(false); setNewPlanName('') }} className="p-2.5 text-teal-300 hover:text-teal-500"><X className="w-4 h-4" /></button>
-                    </div>
-                ) : (
-                    <button onClick={() => setShowNewPlanInput(true)} className="w-full py-2.5 border-2 border-dashed border-teal-200 rounded-lg text-teal-400 text-sm hover:border-teal-400 hover:text-teal-600 transition-colors flex items-center justify-center gap-2">
-                        <Plus className="w-4 h-4" />新しいプランを作成
-                    </button>
-                )}
-            </div>
-
-            {/* カレンダー */}
-            {activePlanId && (
-                <>
-                    {mySelections.length === 0 && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
-                            先に「受験校リスト」タブで受験校を選択してください
-                        </div>
-                    )}
-
-                    <div className="space-y-3">
-                        {calendarDates.map(date => (
-                            <div key={date} className="bg-white rounded-xl shadow-md border border-teal-200 overflow-hidden">
-                                {/* 日付ヘッダー */}
-                                <div className="bg-teal-50 px-4 py-2.5 border-b border-teal-200">
-                                    <span className="font-bold text-teal-700">{formatDateLabel(date)}</span>
-                                </div>
-
-                                {/* 午前・午後 */}
-                                {(['午前', '午後'] as const).map(period => {
-                                    const slotEntries = getSlotEntries(date, period)
-                                    const defaultEntries = slotEntries.filter(e => e.condition_type === 'default')
-                                    const activeSources = getActiveBranchingSources(date, period)
-
-                                    return (
-                                        <div key={period} className="border-b border-teal-100 last:border-b-0">
-                                            <div className="px-4 py-3">
-                                                {/* 時間帯ラベル */}
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                                        period === '午前' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
-                                                    }`}>{period}</span>
-                                                </div>
-
-                                                {/* デフォルトエントリ */}
-                                                {defaultEntries.map(entry => (
-                                                    <EntryCard
-                                                        key={entry.id}
-                                                        entry={entry}
-                                                        onRemove={removeEntry}
-                                                        onToggleBranching={toggleBranching}
-                                                    />
-                                                ))}
-
-                                                {/* 分岐条件付きエントリ */}
-                                                {activeSources.map(source => {
-                                                    const sourceName = source.exam_session?.school?.name || 'この学校'
-                                                    const passEntries = slotEntries.filter(e => e.condition_type === 'if_pass' && e.condition_source_id === source.id)
-                                                    const failEntries = slotEntries.filter(e => e.condition_type === 'if_fail' && e.condition_source_id === source.id)
-
-                                                    // この分岐ソースに対する条件エントリがまだなければスキップ
-                                                    // ただし、分岐ONにしたばかりで空の場合は追加ボタンを表示
-                                                    const hasAny = passEntries.length > 0 || failEntries.length > 0
-
-                                                    return (
-                                                        <div key={source.id} className="mt-2 rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
-                                                            <div className="text-xs text-gray-500 font-medium">
-                                                                {sourceName}（{formatShortDate(source.slot_date)} {source.slot_period}）の結果次第:
-                                                            </div>
-
-                                                            {/* 合格の場合 */}
-                                                            <div className="border-l-[3px] border-green-400 pl-3">
-                                                                <div className="flex items-center gap-1 text-xs font-semibold text-green-600 mb-1">
-                                                                    <CheckCircle className="w-3.5 h-3.5" />合格なら
-                                                                </div>
-                                                                {passEntries.map(e => (
-                                                                    <EntryCard key={e.id} entry={e} onRemove={removeEntry} onToggleBranching={toggleBranching} compact />
-                                                                ))}
-                                                                {passEntries.length === 0 && (
-                                                                    <div className="flex gap-1.5">
-                                                                        <button
-                                                                            onClick={() => openAddModal(date, period, 'if_pass', source.id)}
-                                                                            className="flex-1 py-1.5 border border-dashed border-green-200 rounded text-xs text-green-400 hover:border-green-400 hover:text-green-600 transition-colors"
-                                                                        >+ 学校を追加</button>
-                                                                        <button
-                                                                            onClick={() => addNoteEntry(date, period, '受験なし', 'if_pass', source.id)}
-                                                                            className="py-1.5 px-2 border border-dashed border-green-200 rounded text-xs text-green-400 hover:border-green-400 hover:text-green-600 transition-colors"
-                                                                        >受験なし</button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* 不合格の場合 */}
-                                                            <div className="border-l-[3px] border-red-400 pl-3">
-                                                                <div className="flex items-center gap-1 text-xs font-semibold text-red-500 mb-1">
-                                                                    <XCircle className="w-3.5 h-3.5" />不合格なら
-                                                                </div>
-                                                                {failEntries.map(e => (
-                                                                    <EntryCard key={e.id} entry={e} onRemove={removeEntry} onToggleBranching={toggleBranching} compact />
-                                                                ))}
-                                                                {failEntries.length === 0 && (
-                                                                    <div className="flex gap-1.5">
-                                                                        <button
-                                                                            onClick={() => openAddModal(date, period, 'if_fail', source.id)}
-                                                                            className="flex-1 py-1.5 border border-dashed border-red-200 rounded text-xs text-red-300 hover:border-red-400 hover:text-red-500 transition-colors"
-                                                                        >+ 学校を追加</button>
-                                                                        <button
-                                                                            onClick={() => addNoteEntry(date, period, '受験なし', 'if_fail', source.id)}
-                                                                            className="py-1.5 px-2 border border-dashed border-red-200 rounded text-xs text-red-300 hover:border-red-400 hover:text-red-500 transition-colors"
-                                                                        >受験なし</button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })}
-
-                                                {/* 空スロット（デフォルトエントリもなく、条件付きエントリもない場合） */}
-                                                {defaultEntries.length === 0 && activeSources.length === 0 && (
-                                                    <button
-                                                        onClick={() => openAddModal(date, period, 'default', null)}
-                                                        className="w-full py-3 border-2 border-dashed border-teal-200 rounded-lg text-sm text-teal-300 hover:border-teal-400 hover:text-teal-500 transition-colors flex items-center justify-center gap-1.5"
-                                                    >
-                                                        <Plus className="w-4 h-4" />学校を追加
-                                                    </button>
-                                                )}
-
-                                                {/* デフォルトエントリはあるが追加したい場合（分岐なしスロットでも追加ボタン） */}
-                                                {defaultEntries.length > 0 && activeSources.length === 0 && (
-                                                    <button
-                                                        onClick={() => openAddModal(date, period, 'default', null)}
-                                                        className="mt-1 text-xs text-teal-300 hover:text-teal-500 transition-colors flex items-center gap-1"
-                                                    >
-                                                        <Plus className="w-3 h-3" />追加
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        ))}
-                    </div>
-                </>
-            )}
-
-            {/* 学校追加モーダル */}
-            {showAddModal && (
-                <AddSlotModal
-                    selections={mySelections}
-                    conditionType={addTarget.conditionType}
-                    onSelect={addEntry}
-                    onClose={() => setShowAddModal(false)}
-                />
-            )}
-        </div>
-    )
-}
-
-// ============================================================
-// エントリカード
-// ============================================================
-
-function EntryCard({
-    entry,
-    onRemove,
-    onToggleBranching,
-    compact,
-}: {
-    entry: ScheduleEntry
-    onRemove: (id: string) => void
-    onToggleBranching: (id: string, current: boolean) => void
-    compact?: boolean
-}) {
-    // メモだけのエントリ（受験なし等）
-    if (!entry.exam_session_id && entry.note) {
+    if (mySelections.length === 0) {
         return (
-            <div className="flex items-center justify-between py-1.5 px-2 bg-gray-100 rounded text-xs text-gray-500 mb-1">
-                <span>{entry.note}</span>
-                <button onClick={() => onRemove(entry.id)} className="text-red-200 hover:text-red-500 ml-2"><Trash2 className="w-3 h-3" /></button>
+            <div className="bg-white rounded-xl shadow-md border border-teal-200 p-8 text-center">
+                <CalendarDays className="w-12 h-12 text-teal-200 mx-auto mb-3" />
+                <p className="text-teal-600 font-semibold mb-1">まだ受験校が選択されていません</p>
+                <p className="text-sm text-teal-400">
+                    「受験校リスト」タブで学校を選択すると<br />フローチャートが自動生成されます
+                </p>
             </div>
         )
     }
 
     return (
-        <div className={`flex items-center justify-between gap-2 rounded-lg border-2 bg-white mb-1 ${
-            entry.has_branching ? 'border-amber-300' : 'border-teal-200'
-        } ${compact ? 'p-2' : 'p-3'}`}>
-            <div className="flex-1 min-w-0">
-                <div className={`font-bold text-teal-800 truncate ${compact ? 'text-xs' : 'text-sm'}`}>
-                    {entry.exam_session?.school?.name}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-teal-500 mt-0.5">
-                    <span>{entry.exam_session?.session_label}</span>
-                    {entry.exam_session?.exam_subjects_label && <span>{entry.exam_session.exam_subjects_label}</span>}
-                    {entry.exam_session?.sapix != null && <span>S{entry.exam_session.sapix}</span>}
-                    {!compact && entry.exam_session?.exam_fee != null && <span>¥{entry.exam_session.exam_fee.toLocaleString()}</span>}
-                </div>
+        <div className="space-y-3">
+            <div className="bg-white rounded-xl shadow-md border border-teal-200 px-4 py-3">
+                <p className="text-xs text-teal-500 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                        <GitBranch className="w-3.5 h-3.5 text-amber-500" />
+                    </span>
+                    カードの右にある分岐ボタンをタップすると「合格したら受験終了」の分岐を追加できます
+                </p>
             </div>
-            <div className="flex items-center gap-0.5 flex-shrink-0">
-                <button
-                    onClick={() => onToggleBranching(entry.id, entry.has_branching)}
-                    className={`p-1.5 rounded-lg transition-colors ${
-                        entry.has_branching
-                            ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
-                            : 'text-teal-200 hover:text-amber-500 hover:bg-amber-50'
-                    }`}
-                    title={entry.has_branching ? '分岐を解除' : '合否で分岐する'}
-                >
-                    <GitBranch className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={() => onRemove(entry.id)} className="p-1.5 text-red-200 hover:text-red-500 rounded-lg transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" />
-                </button>
+
+            <div className="overflow-x-auto">
+                <div className="min-w-fit py-6 flex flex-col items-center">
+                    {flowTree && <FlowNodeRenderer node={flowTree} onToggle={toggleBranching} />}
+                </div>
             </div>
         </div>
     )
 }
 
 // ============================================================
-// 学校追加モーダル
+// フローチャートノード描画
 // ============================================================
 
-function AddSlotModal({
-    selections,
-    conditionType,
-    onSelect,
-    onClose,
+function FlowNodeRenderer({
+    node,
+    onToggle,
 }: {
-    selections: UserExamSelection[]
-    conditionType: ConditionType
-    onSelect: (examSessionId: string) => void
-    onClose: () => void
+    node: FlowNode
+    onToggle: (selectionId: string, currentAction: string) => void
 }) {
-    return (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-4 border-b border-teal-100">
-                    <h3 className="text-lg font-bold text-teal-700">
-                        {conditionType === 'if_pass' ? (
-                            <span className="flex items-center gap-2"><CheckCircle className="w-5 h-5 text-green-500" />合格の場合</span>
-                        ) : conditionType === 'if_fail' ? (
-                            <span className="flex items-center gap-2"><XCircle className="w-5 h-5 text-red-500" />不合格の場合</span>
-                        ) : '学校を選択'}
-                    </h3>
-                    <button onClick={onClose} className="p-2 text-teal-300 hover:text-teal-500 rounded-lg"><X className="w-5 h-5" /></button>
-                </div>
-                <div className="overflow-y-auto p-3 space-y-1.5">
-                    {selections.length === 0 ? (
-                        <p className="text-teal-300 text-center py-8 text-sm">受験校リストが空です</p>
-                    ) : (
-                        selections.map(sel => (
-                            <button
-                                key={sel.id}
-                                onClick={() => onSelect(sel.exam_session_id)}
-                                className="w-full text-left px-4 py-3 rounded-lg hover:bg-teal-50 active:bg-teal-100 transition-colors flex items-center gap-3"
-                            >
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
-                                    sel.exam_session?.time_period === '午後' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
-                                }`}>
-                                    {sel.exam_session?.test_date ? formatShortDate(sel.exam_session.test_date) : '?'}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-teal-700 text-sm truncate">{sel.exam_session?.school?.name}</div>
-                                    <div className="text-xs text-teal-400">
-                                        {sel.exam_session?.session_label} {sel.exam_session?.time_period}
-                                        {sel.exam_session?.exam_subjects_label && ` / ${sel.exam_session.exam_subjects_label}`}
-                                    </div>
-                                </div>
-                                <Plus className="w-5 h-5 text-teal-300 flex-shrink-0" />
-                            </button>
-                        ))
-                    )}
-                </div>
+    if (node.type === 'terminal') {
+        return (
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl px-5 py-3 text-center shadow-sm">
+                <div className="text-green-600 font-bold text-sm">{node.label}</div>
             </div>
+        )
+    }
+
+    const { session, selectionId, branching, passPath, failPath, next } = node
+
+    return (
+        <div className="flex flex-col items-center">
+            {/* 学校ノードカード */}
+            <div className={`relative w-52 rounded-xl border-2 shadow-sm transition-colors ${
+                branching ? 'border-amber-300 bg-amber-50/30' : 'border-teal-200 bg-white'
+            }`}>
+                <div className="p-3">
+                    <div className="font-bold text-teal-800 text-sm truncate pr-4">
+                        {session.school?.name}
+                    </div>
+                    <div className="text-xs text-teal-500 mt-0.5">
+                        {session.session_label} · {formatDateLabel(session.test_date!)} {session.time_period}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-teal-400 mt-1">
+                        {session.exam_subjects_label && <span>{session.exam_subjects_label}</span>}
+                        {session.sapix != null && (
+                            <span className="bg-teal-50 px-1 rounded">S{session.sapix}</span>
+                        )}
+                        {session.exam_fee != null && <span>¥{session.exam_fee.toLocaleString()}</span>}
+                    </div>
+                </div>
+                {/* 分岐トグルボタン */}
+                <button
+                    onClick={() => onToggle(selectionId, branching ? 'end' : 'continue')}
+                    className={`absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full border-2 flex items-center justify-center shadow-sm transition-all ${
+                        branching
+                            ? 'bg-amber-400 border-amber-500 text-white hover:bg-amber-500'
+                            : 'bg-white border-teal-200 text-teal-300 hover:border-amber-400 hover:text-amber-500'
+                    }`}
+                    title={branching ? '分岐を解除' : '合格したら受験終了'}
+                >
+                    <GitBranch className="w-3.5 h-3.5" />
+                </button>
+            </div>
+
+            {/* 分岐あり: フォーク表示 */}
+            {branching && passPath ? (
+                <>
+                    {/* 幹の縦線 */}
+                    <div className="w-0.5 h-5 bg-gray-300" />
+                    {/* フォーク */}
+                    <div className="flex">
+                        {/* 合格パス */}
+                        <div className="flex flex-col items-center min-w-[140px] px-3 relative">
+                            <div className="absolute top-0 right-0 left-1/2 h-0.5 bg-gray-300" />
+                            <div className="w-0.5 h-4 bg-green-400" />
+                            <div className="flex items-center gap-1 text-xs font-bold text-green-600 mb-2">
+                                <CheckCircle className="w-3.5 h-3.5" />合格
+                            </div>
+                            <FlowNodeRenderer node={passPath} onToggle={onToggle} />
+                        </div>
+                        {/* 不合格パス */}
+                        <div className="flex flex-col items-center min-w-[140px] px-3 relative">
+                            <div className="absolute top-0 left-0 right-1/2 h-0.5 bg-gray-300" />
+                            <div className="w-0.5 h-4 bg-red-400" />
+                            <div className="flex items-center gap-1 text-xs font-bold text-red-500 mb-2">
+                                <XCircle className="w-3.5 h-3.5" />不合格
+                            </div>
+                            {failPath ? (
+                                <FlowNodeRenderer node={failPath} onToggle={onToggle} />
+                            ) : (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 text-center">
+                                    <div className="text-xs text-gray-400">全日程終了</div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </>
+            ) : next ? (
+                <>
+                    {/* 次ノードへの縦線 */}
+                    <div className="w-0.5 h-6 bg-gray-300" />
+                    <FlowNodeRenderer node={next} onToggle={onToggle} />
+                </>
+            ) : null}
         </div>
     )
 }

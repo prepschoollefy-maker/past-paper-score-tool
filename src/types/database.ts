@@ -123,12 +123,15 @@ export interface PracticeRecordInput {
 }
 
 // 受験計画関連の型
+export type OnPassAction = 'continue' | 'end'
+
 export interface UserExamSelection {
     id: string
     user_id: string
     exam_session_id: string
     priority: number | null
     memo: string | null
+    on_pass_action: OnPassAction
     created_at: string
     // JOINで取得
     exam_session?: ExamSession
