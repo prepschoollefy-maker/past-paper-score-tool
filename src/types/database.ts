@@ -134,8 +134,7 @@ export interface UserExamSelection {
     exam_session?: ExamSession
 }
 
-export type ContinuationType = 'branch' | 'continue' | 'end'
-export type BranchCondition = '合格' | '不合格'
+export type ConditionType = 'default' | 'if_pass' | 'if_fail'
 
 export interface SchedulePlan {
     id: string
@@ -145,20 +144,21 @@ export interface SchedulePlan {
     created_at: string
     updated_at: string
     // JOINで取得
-    slots?: ScheduleSlot[]
+    entries?: ScheduleEntry[]
 }
 
-export interface ScheduleSlot {
+export interface ScheduleEntry {
     id: string
     plan_id: string
-    exam_session_id: string
     slot_date: string
     slot_period: TimePeriod
-    parent_slot_id: string | null
-    branch_condition: BranchCondition | null
-    continuation_type: ContinuationType
-    sort_order: number
+    exam_session_id: string | null
+    has_branching: boolean
+    condition_type: ConditionType
+    condition_source_id: string | null
+    note: string | null
     created_at: string
     // JOINで取得
     exam_session?: ExamSession
+    condition_source?: ScheduleEntry
 }

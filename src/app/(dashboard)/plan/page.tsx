@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { ExamSession, UserExamSelection, SchedulePlan, ScheduleSlot, BranchCondition } from '@/types/database'
+import type { ExamSession, UserExamSelection, SchedulePlan, ScheduleEntry, ConditionType } from '@/types/database'
 import {
     Search, Plus, Check, Trash2, CalendarDays, ListChecks,
     CheckCircle, XCircle, ChevronDown, ChevronRight, X, MapPin, Clock, TrendingUp, GitBranch
@@ -382,17 +382,17 @@ function DetailItem({ icon, label, value }: { icon?: React.ReactNode; label: str
 }
 
 // ============================================================
-// スケジュールボードタブ
+// スケジュールボードタブ（カレンダー型）
 // ============================================================
 
 function ScheduleTab() {
     const [plans, setPlans] = useState<SchedulePlan[]>([])
     const [activePlanId, setActivePlanId] = useState<string | null>(null)
-    const [slots, setSlots] = useState<ScheduleSlot[]>([])
+    const [entries, setEntries] = useState<ScheduleEntry[]>([])
     const [mySelections, setMySelections] = useState<UserExamSelection[]>([])
     const [loading, setLoading] = useState(true)
     const [showAddModal, setShowAddModal] = useState(false)
-    const [addTarget, setAddTarget] = useState<{ parentSlotId: string | null; branchCondition: BranchCondition | null }>({ parentSlotId: null, branchCondition: null })
+    const [addTarget, setAddTarget] = useState<{ date: string; period: string; conditionType: ConditionType; conditionSourceId: string | null }>({ date: '', period: '午前', conditionType: 'default', conditionSourceId: null })
     const [newPlanName, setNewPlanName] = useState('')
     const [showNewPlanInput, setShowNewPlanInput] = useState(false)
 
@@ -412,15 +412,14 @@ function ScheduleTab() {
         }
     }, [supabase, activePlanId])
 
-    const fetchSlots = useCallback(async (planId: string) => {
+    const fetchEntries = useCallback(async (planId: string) => {
         const { data } = await supabase
-            .from('schedule_slots')
+            .from('schedule_entries')
             .select('*, exam_session:exam_sessions(*, school:schools(*))')
             .eq('plan_id', planId)
             .order('slot_date')
             .order('slot_period')
-            .order('sort_order')
-        if (data) setSlots(data)
+        if (data) setEntries(data)
     }, [supabase])
 
     const fetchSelections = useCallback(async () => {
@@ -436,8 +435,8 @@ function ScheduleTab() {
     }, [fetchPlans, fetchSelections])
 
     useEffect(() => {
-        if (activePlanId) fetchSlots(activePlanId)
-    }, [activePlanId, fetchSlots])
+        if (activePlanId) fetchEntries(activePlanId)
+    }, [activePlanId, fetchEntries])
 
     const createPlan = async () => {
         const name = newPlanName.trim()
@@ -452,7 +451,7 @@ function ScheduleTab() {
         if (data) {
             setPlans(prev => [data, ...prev])
             setActivePlanId(data.id)
-            setSlots([])
+            setEntries([])
             setNewPlanName('')
             setShowNewPlanInput(false)
         }
@@ -465,86 +464,90 @@ function ScheduleTab() {
         if (activePlanId === planId) {
             const remaining = plans.filter(p => p.id !== planId)
             setActivePlanId(remaining.length > 0 ? remaining[0].id : null)
-            setSlots([])
+            setEntries([])
         }
     }
 
-    const openAddModal = (parentSlotId: string | null, branchCondition: BranchCondition | null) => {
-        setAddTarget({ parentSlotId, branchCondition })
+    const openAddModal = (date: string, period: string, conditionType: ConditionType, conditionSourceId: string | null) => {
+        setAddTarget({ date, period, conditionType, conditionSourceId })
         setShowAddModal(true)
     }
 
-    const addSlot = async (examSessionId: string) => {
+    const addEntry = async (examSessionId: string) => {
         if (!activePlanId) return
-        const session = mySelections.find(s => s.exam_session_id === examSessionId)?.exam_session
-        if (!session) return
-        const { error } = await supabase.from('schedule_slots').insert({
+        const { error } = await supabase.from('schedule_entries').insert({
             plan_id: activePlanId,
+            slot_date: addTarget.date,
+            slot_period: addTarget.period,
             exam_session_id: examSessionId,
-            slot_date: session.test_date!,
-            slot_period: session.time_period || '午前',
-            parent_slot_id: addTarget.parentSlotId,
-            branch_condition: addTarget.branchCondition,
-            continuation_type: 'continue',
+            condition_type: addTarget.conditionType,
+            condition_source_id: addTarget.conditionSourceId,
         })
         if (!error) {
-            fetchSlots(activePlanId)
+            fetchEntries(activePlanId)
             setShowAddModal(false)
         }
     }
 
-    const removeSlot = async (slotId: string) => {
-        if (!confirm('この枠を削除しますか？分岐先も削除されます。')) return
-        await supabase.from('schedule_slots').delete().eq('id', slotId)
-        if (activePlanId) fetchSlots(activePlanId)
+    const addNoteEntry = async (date: string, period: string, note: string, conditionType: ConditionType, conditionSourceId: string | null) => {
+        if (!activePlanId) return
+        await supabase.from('schedule_entries').insert({
+            plan_id: activePlanId,
+            slot_date: date,
+            slot_period: period,
+            exam_session_id: null,
+            condition_type: conditionType,
+            condition_source_id: conditionSourceId,
+            note,
+        })
+        fetchEntries(activePlanId)
     }
 
-    const toggleBranch = async (slotId: string, currentType: string) => {
-        const newType = currentType === 'branch' ? 'continue' : 'branch'
-        await supabase.from('schedule_slots').update({ continuation_type: newType }).eq('id', slotId)
-        if (activePlanId) fetchSlots(activePlanId)
+    const removeEntry = async (entryId: string) => {
+        await supabase.from('schedule_entries').delete().eq('id', entryId)
+        if (activePlanId) fetchEntries(activePlanId)
     }
 
-    // ルートスロットを日付・時間帯でグルーピング
-    const rootSlots = useMemo(() => {
-        return slots
-            .filter(s => s.parent_slot_id === null)
-            .sort((a, b) => {
-                if (a.slot_date !== b.slot_date) return a.slot_date.localeCompare(b.slot_date)
-                if (a.slot_period !== b.slot_period) return a.slot_period === '午前' ? -1 : 1
-                return a.sort_order - b.sort_order
-            })
-    }, [slots])
+    const toggleBranching = async (entryId: string, current: boolean) => {
+        await supabase.from('schedule_entries').update({ has_branching: !current }).eq('id', entryId)
+        if (activePlanId) fetchEntries(activePlanId)
+    }
 
-    const timelineGroups = useMemo(() => {
-        const groups: { dateLabel: string; period: string; slots: ScheduleSlot[] }[] = []
-        const map = new Map<string, ScheduleSlot[]>()
-        for (const s of rootSlots) {
-            const key = `${s.slot_date}|${s.slot_period}`
-            if (!map.has(key)) {
-                map.set(key, [])
-                groups.push({
-                    dateLabel: formatDateLabel(s.slot_date),
-                    period: s.slot_period,
-                    slots: map.get(key)!,
-                })
-            }
-            map.get(key)!.push(s)
+    // カレンダー日付を生成
+    const calendarDates = useMemo(() => {
+        const dateSet = new Set<string>()
+        // 選択校の日付
+        mySelections.forEach(s => {
+            if (s.exam_session?.test_date) dateSet.add(s.exam_session.test_date)
+        })
+        // エントリの日付
+        entries.forEach(e => dateSet.add(e.slot_date))
+        // 標準日程（2月1日〜5日）
+        const year = new Date().getFullYear()
+        for (let d = 1; d <= 5; d++) {
+            dateSet.add(`${year}-02-${String(d).padStart(2, '0')}`)
         }
-        return groups
-    }, [rootSlots])
+        return Array.from(dateSet).sort()
+    }, [mySelections, entries])
 
-    // ツリー構築（分岐の子を取得）
-    const getChildren = useCallback((parentId: string): ScheduleSlot[] => {
-        return slots
-            .filter(s => s.parent_slot_id === parentId)
-            .sort((a, b) => {
-                // 合格を先に表示
-                if (a.branch_condition === '合格' && b.branch_condition !== '合格') return -1
-                if (a.branch_condition !== '合格' && b.branch_condition === '合格') return 1
-                return a.sort_order - b.sort_order
-            })
-    }, [slots])
+    // 分岐ソース（has_branching=trueのエントリ）を取得
+    const branchingSources = useMemo(() => {
+        return entries.filter(e => e.has_branching)
+    }, [entries])
+
+    // 特定スロットのエントリを取得
+    const getSlotEntries = useCallback((date: string, period: string): ScheduleEntry[] => {
+        return entries.filter(e => e.slot_date === date && e.slot_period === period)
+    }, [entries])
+
+    // 特定スロットより前の分岐ソースを取得
+    const getActiveBranchingSources = useCallback((date: string, period: string): ScheduleEntry[] => {
+        return branchingSources.filter(e => {
+            if (e.slot_date < date) return true
+            if (e.slot_date === date && period === '午後' && e.slot_period === '午前') return true
+            return false
+        })
+    }, [branchingSources])
 
     if (loading) return <Loading />
 
@@ -576,7 +579,6 @@ function ScheduleTab() {
                         )}
                     </div>
                 )}
-
                 {showNewPlanInput ? (
                     <div className="flex items-center gap-2">
                         <input
@@ -588,32 +590,17 @@ function ScheduleTab() {
                             className="flex-1 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2.5 text-sm text-teal-700 placeholder-teal-300 focus:outline-none focus:ring-2 focus:ring-teal-400"
                             autoFocus
                         />
-                        <button
-                            onClick={createPlan}
-                            disabled={!newPlanName.trim()}
-                            className="px-4 py-2.5 bg-teal-400 text-white rounded-lg text-sm hover:bg-teal-500 disabled:opacity-50 transition-colors"
-                        >
-                            作成
-                        </button>
-                        <button
-                            onClick={() => { setShowNewPlanInput(false); setNewPlanName('') }}
-                            className="p-2.5 text-teal-300 hover:text-teal-500 transition-colors"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
+                        <button onClick={createPlan} disabled={!newPlanName.trim()} className="px-4 py-2.5 bg-teal-400 text-white rounded-lg text-sm hover:bg-teal-500 disabled:opacity-50 transition-colors">作成</button>
+                        <button onClick={() => { setShowNewPlanInput(false); setNewPlanName('') }} className="p-2.5 text-teal-300 hover:text-teal-500"><X className="w-4 h-4" /></button>
                     </div>
                 ) : (
-                    <button
-                        onClick={() => setShowNewPlanInput(true)}
-                        className="w-full py-2.5 border-2 border-dashed border-teal-200 rounded-lg text-teal-400 text-sm hover:border-teal-400 hover:text-teal-600 transition-colors flex items-center justify-center gap-2"
-                    >
-                        <Plus className="w-4 h-4" />
-                        新しいプランを作成
+                    <button onClick={() => setShowNewPlanInput(true)} className="w-full py-2.5 border-2 border-dashed border-teal-200 rounded-lg text-teal-400 text-sm hover:border-teal-400 hover:text-teal-600 transition-colors flex items-center justify-center gap-2">
+                        <Plus className="w-4 h-4" />新しいプランを作成
                     </button>
                 )}
             </div>
 
-            {/* タイムライン */}
+            {/* カレンダー */}
             {activePlanId && (
                 <>
                     {mySelections.length === 0 && (
@@ -622,77 +609,129 @@ function ScheduleTab() {
                         </div>
                     )}
 
-                    {slots.length === 0 ? (
-                        <div className="bg-white rounded-xl shadow-md border border-teal-200 p-8 text-center">
-                            <CalendarDays className="w-12 h-12 text-teal-200 mx-auto mb-3" />
-                            <p className="text-teal-400 mb-4">まだスケジュールが空です</p>
-                            <button
-                                onClick={() => openAddModal(null, null)}
-                                className="px-6 py-2.5 bg-teal-400 text-white rounded-lg text-sm hover:bg-teal-500 transition-colors inline-flex items-center gap-2"
-                            >
-                                <Plus className="w-4 h-4" />
-                                最初の学校を追加
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="relative">
-                            {/* タイムライン縦線 */}
-                            <div className="absolute left-[19px] top-4 bottom-4 w-0.5 bg-teal-200" />
-
-                            <div className="space-y-1">
-                                {timelineGroups.map((group, gi) => (
-                                    <div key={`${group.dateLabel}-${group.period}`}>
-                                        {/* 日付ヘッダー */}
-                                        <div className="flex items-center gap-3 py-2 relative">
-                                            <div className="w-10 h-10 rounded-full bg-teal-400 text-white flex items-center justify-center flex-shrink-0 z-10 shadow-md">
-                                                <span className="text-[10px] font-bold leading-tight text-center">
-                                                    {formatShortDate(group.slots[0].slot_date)}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-teal-700">{group.dateLabel}</span>
-                                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                                    group.period === '午前'
-                                                        ? 'bg-amber-100 text-amber-700'
-                                                        : 'bg-indigo-100 text-indigo-700'
-                                                }`}>
-                                                    {group.period}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* スロットカード */}
-                                        <div className="ml-[19px] pl-8 border-l-2 border-teal-200 space-y-2 pb-3">
-                                            {group.slots.map(slot => (
-                                                <TimelineSlotCard
-                                                    key={slot.id}
-                                                    slot={slot}
-                                                    getChildren={getChildren}
-                                                    onRemove={removeSlot}
-                                                    onToggleBranch={toggleBranch}
-                                                    onAddBranch={openAddModal}
-                                                    depth={0}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* 末尾に追加ボタン */}
-                            <div className="flex items-center gap-3 py-2 relative">
-                                <div className="w-10 h-10 rounded-full border-2 border-dashed border-teal-300 flex items-center justify-center flex-shrink-0 z-10 bg-white">
-                                    <Plus className="w-5 h-5 text-teal-300" />
+                    <div className="space-y-3">
+                        {calendarDates.map(date => (
+                            <div key={date} className="bg-white rounded-xl shadow-md border border-teal-200 overflow-hidden">
+                                {/* 日付ヘッダー */}
+                                <div className="bg-teal-50 px-4 py-2.5 border-b border-teal-200">
+                                    <span className="font-bold text-teal-700">{formatDateLabel(date)}</span>
                                 </div>
-                                <button
-                                    onClick={() => openAddModal(null, null)}
-                                    className="text-sm text-teal-400 hover:text-teal-600 transition-colors"
-                                >
-                                    学校を追加...
-                                </button>
+
+                                {/* 午前・午後 */}
+                                {(['午前', '午後'] as const).map(period => {
+                                    const slotEntries = getSlotEntries(date, period)
+                                    const defaultEntries = slotEntries.filter(e => e.condition_type === 'default')
+                                    const activeSources = getActiveBranchingSources(date, period)
+
+                                    return (
+                                        <div key={period} className="border-b border-teal-100 last:border-b-0">
+                                            <div className="px-4 py-3">
+                                                {/* 時間帯ラベル */}
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                                        period === '午前' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
+                                                    }`}>{period}</span>
+                                                </div>
+
+                                                {/* デフォルトエントリ */}
+                                                {defaultEntries.map(entry => (
+                                                    <EntryCard
+                                                        key={entry.id}
+                                                        entry={entry}
+                                                        onRemove={removeEntry}
+                                                        onToggleBranching={toggleBranching}
+                                                    />
+                                                ))}
+
+                                                {/* 分岐条件付きエントリ */}
+                                                {activeSources.map(source => {
+                                                    const sourceName = source.exam_session?.school?.name || 'この学校'
+                                                    const passEntries = slotEntries.filter(e => e.condition_type === 'if_pass' && e.condition_source_id === source.id)
+                                                    const failEntries = slotEntries.filter(e => e.condition_type === 'if_fail' && e.condition_source_id === source.id)
+
+                                                    // この分岐ソースに対する条件エントリがまだなければスキップ
+                                                    // ただし、分岐ONにしたばかりで空の場合は追加ボタンを表示
+                                                    const hasAny = passEntries.length > 0 || failEntries.length > 0
+
+                                                    return (
+                                                        <div key={source.id} className="mt-2 rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
+                                                            <div className="text-xs text-gray-500 font-medium">
+                                                                {sourceName}（{formatShortDate(source.slot_date)} {source.slot_period}）の結果次第:
+                                                            </div>
+
+                                                            {/* 合格の場合 */}
+                                                            <div className="border-l-[3px] border-green-400 pl-3">
+                                                                <div className="flex items-center gap-1 text-xs font-semibold text-green-600 mb-1">
+                                                                    <CheckCircle className="w-3.5 h-3.5" />合格なら
+                                                                </div>
+                                                                {passEntries.map(e => (
+                                                                    <EntryCard key={e.id} entry={e} onRemove={removeEntry} onToggleBranching={toggleBranching} compact />
+                                                                ))}
+                                                                {passEntries.length === 0 && (
+                                                                    <div className="flex gap-1.5">
+                                                                        <button
+                                                                            onClick={() => openAddModal(date, period, 'if_pass', source.id)}
+                                                                            className="flex-1 py-1.5 border border-dashed border-green-200 rounded text-xs text-green-400 hover:border-green-400 hover:text-green-600 transition-colors"
+                                                                        >+ 学校を追加</button>
+                                                                        <button
+                                                                            onClick={() => addNoteEntry(date, period, '受験なし', 'if_pass', source.id)}
+                                                                            className="py-1.5 px-2 border border-dashed border-green-200 rounded text-xs text-green-400 hover:border-green-400 hover:text-green-600 transition-colors"
+                                                                        >受験なし</button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* 不合格の場合 */}
+                                                            <div className="border-l-[3px] border-red-400 pl-3">
+                                                                <div className="flex items-center gap-1 text-xs font-semibold text-red-500 mb-1">
+                                                                    <XCircle className="w-3.5 h-3.5" />不合格なら
+                                                                </div>
+                                                                {failEntries.map(e => (
+                                                                    <EntryCard key={e.id} entry={e} onRemove={removeEntry} onToggleBranching={toggleBranching} compact />
+                                                                ))}
+                                                                {failEntries.length === 0 && (
+                                                                    <div className="flex gap-1.5">
+                                                                        <button
+                                                                            onClick={() => openAddModal(date, period, 'if_fail', source.id)}
+                                                                            className="flex-1 py-1.5 border border-dashed border-red-200 rounded text-xs text-red-300 hover:border-red-400 hover:text-red-500 transition-colors"
+                                                                        >+ 学校を追加</button>
+                                                                        <button
+                                                                            onClick={() => addNoteEntry(date, period, '受験なし', 'if_fail', source.id)}
+                                                                            className="py-1.5 px-2 border border-dashed border-red-200 rounded text-xs text-red-300 hover:border-red-400 hover:text-red-500 transition-colors"
+                                                                        >受験なし</button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+
+                                                {/* 空スロット（デフォルトエントリもなく、条件付きエントリもない場合） */}
+                                                {defaultEntries.length === 0 && activeSources.length === 0 && (
+                                                    <button
+                                                        onClick={() => openAddModal(date, period, 'default', null)}
+                                                        className="w-full py-3 border-2 border-dashed border-teal-200 rounded-lg text-sm text-teal-300 hover:border-teal-400 hover:text-teal-500 transition-colors flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <Plus className="w-4 h-4" />学校を追加
+                                                    </button>
+                                                )}
+
+                                                {/* デフォルトエントリはあるが追加したい場合（分岐なしスロットでも追加ボタン） */}
+                                                {defaultEntries.length > 0 && activeSources.length === 0 && (
+                                                    <button
+                                                        onClick={() => openAddModal(date, period, 'default', null)}
+                                                        className="mt-1 text-xs text-teal-300 hover:text-teal-500 transition-colors flex items-center gap-1"
+                                                    >
+                                                        <Plus className="w-3 h-3" />追加
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
                             </div>
-                        </div>
-                    )}
+                        ))}
+                    </div>
                 </>
             )}
 
@@ -700,8 +739,8 @@ function ScheduleTab() {
             {showAddModal && (
                 <AddSlotModal
                     selections={mySelections}
-                    branchCondition={addTarget.branchCondition}
-                    onSelect={addSlot}
+                    conditionType={addTarget.conditionType}
+                    onSelect={addEntry}
                     onClose={() => setShowAddModal(false)}
                 />
             )}
@@ -710,148 +749,61 @@ function ScheduleTab() {
 }
 
 // ============================================================
-// タイムラインスロットカード（再帰）
+// エントリカード
 // ============================================================
 
-function TimelineSlotCard({
-    slot,
-    getChildren,
+function EntryCard({
+    entry,
     onRemove,
-    onToggleBranch,
-    onAddBranch,
-    depth,
+    onToggleBranching,
+    compact,
 }: {
-    slot: ScheduleSlot
-    getChildren: (parentId: string) => ScheduleSlot[]
+    entry: ScheduleEntry
     onRemove: (id: string) => void
-    onToggleBranch: (id: string, currentType: string) => void
-    onAddBranch: (parentSlotId: string | null, branchCondition: BranchCondition | null) => void
-    depth: number
+    onToggleBranching: (id: string, current: boolean) => void
+    compact?: boolean
 }) {
-    const children = getChildren(slot.id)
-    const isBranch = slot.continuation_type === 'branch'
-    const hasPassChild = children.some(c => c.branch_condition === '合格')
-    const hasFailChild = children.some(c => c.branch_condition === '不合格')
+    // メモだけのエントリ（受験なし等）
+    if (!entry.exam_session_id && entry.note) {
+        return (
+            <div className="flex items-center justify-between py-1.5 px-2 bg-gray-100 rounded text-xs text-gray-500 mb-1">
+                <span>{entry.note}</span>
+                <button onClick={() => onRemove(entry.id)} className="text-red-200 hover:text-red-500 ml-2"><Trash2 className="w-3 h-3" /></button>
+            </div>
+        )
+    }
 
     return (
-        <div>
-            {/* 分岐条件ラベル（子ノードの場合） */}
-            {slot.branch_condition && (
-                <div className={`flex items-center gap-1.5 mb-1 text-xs font-semibold ${
-                    slot.branch_condition === '合格' ? 'text-green-600' : 'text-red-500'
-                }`}>
-                    {slot.branch_condition === '合格'
-                        ? <CheckCircle className="w-3.5 h-3.5" />
-                        : <XCircle className="w-3.5 h-3.5" />
-                    }
-                    {slot.branch_condition}の場合
+        <div className={`flex items-center justify-between gap-2 rounded-lg border-2 bg-white mb-1 ${
+            entry.has_branching ? 'border-amber-300' : 'border-teal-200'
+        } ${compact ? 'p-2' : 'p-3'}`}>
+            <div className="flex-1 min-w-0">
+                <div className={`font-bold text-teal-800 truncate ${compact ? 'text-xs' : 'text-sm'}`}>
+                    {entry.exam_session?.school?.name}
                 </div>
-            )}
-
-            {/* 学校カード */}
-            <div className={`rounded-lg border-2 p-3 bg-white transition-shadow hover:shadow-md ${
-                isBranch ? 'border-amber-300' : 'border-teal-200'
-            }`}>
-                <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                        <div className="font-bold text-teal-800 text-sm truncate">
-                            {slot.exam_session?.school?.name}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-teal-500 mt-0.5">
-                            <span>{slot.exam_session?.session_label}</span>
-                            {slot.exam_session?.exam_subjects_label && (
-                                <span>{slot.exam_session.exam_subjects_label}</span>
-                            )}
-                            {slot.exam_session?.sapix != null && (
-                                <span>S{slot.exam_session.sapix}</span>
-                            )}
-                            {slot.exam_session?.exam_fee != null && (
-                                <span>¥{slot.exam_session.exam_fee.toLocaleString()}</span>
-                            )}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                        {/* 分岐トグル */}
-                        <button
-                            onClick={() => onToggleBranch(slot.id, slot.continuation_type)}
-                            className={`p-1.5 rounded-lg transition-colors ${
-                                isBranch
-                                    ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
-                                    : 'text-teal-300 hover:text-amber-500 hover:bg-amber-50'
-                            }`}
-                            title={isBranch ? '分岐を解除' : '合否で分岐する'}
-                        >
-                            <GitBranch className="w-4 h-4" />
-                        </button>
-                        {/* 削除 */}
-                        <button
-                            onClick={() => onRemove(slot.id)}
-                            className="p-1.5 text-red-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                    </div>
+                <div className="flex items-center gap-2 text-xs text-teal-500 mt-0.5">
+                    <span>{entry.exam_session?.session_label}</span>
+                    {entry.exam_session?.exam_subjects_label && <span>{entry.exam_session.exam_subjects_label}</span>}
+                    {entry.exam_session?.sapix != null && <span>S{entry.exam_session.sapix}</span>}
+                    {!compact && entry.exam_session?.exam_fee != null && <span>¥{entry.exam_session.exam_fee.toLocaleString()}</span>}
                 </div>
             </div>
-
-            {/* 分岐パス */}
-            {isBranch && (
-                <div className="ml-4 mt-2 space-y-2">
-                    {/* 合格パス */}
-                    <div className="border-l-[3px] border-green-300 pl-3">
-                        {hasPassChild ? (
-                            children
-                                .filter(c => c.branch_condition === '合格')
-                                .map(child => (
-                                    <TimelineSlotCard
-                                        key={child.id}
-                                        slot={child}
-                                        getChildren={getChildren}
-                                        onRemove={onRemove}
-                                        onToggleBranch={onToggleBranch}
-                                        onAddBranch={onAddBranch}
-                                        depth={depth + 1}
-                                    />
-                                ))
-                        ) : (
-                            <button
-                                onClick={() => onAddBranch(slot.id, '合格')}
-                                className="w-full py-2 border-2 border-dashed border-green-200 rounded-lg text-xs text-green-400 hover:border-green-400 hover:text-green-600 transition-colors flex items-center justify-center gap-1.5"
-                            >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                合格の場合を追加
-                            </button>
-                        )}
-                    </div>
-
-                    {/* 不合格パス */}
-                    <div className="border-l-[3px] border-red-300 pl-3">
-                        {hasFailChild ? (
-                            children
-                                .filter(c => c.branch_condition === '不合格')
-                                .map(child => (
-                                    <TimelineSlotCard
-                                        key={child.id}
-                                        slot={child}
-                                        getChildren={getChildren}
-                                        onRemove={onRemove}
-                                        onToggleBranch={onToggleBranch}
-                                        onAddBranch={onAddBranch}
-                                        depth={depth + 1}
-                                    />
-                                ))
-                        ) : (
-                            <button
-                                onClick={() => onAddBranch(slot.id, '不合格')}
-                                className="w-full py-2 border-2 border-dashed border-red-200 rounded-lg text-xs text-red-300 hover:border-red-400 hover:text-red-500 transition-colors flex items-center justify-center gap-1.5"
-                            >
-                                <XCircle className="w-3.5 h-3.5" />
-                                不合格の場合を追加
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button
+                    onClick={() => onToggleBranching(entry.id, entry.has_branching)}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                        entry.has_branching
+                            ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
+                            : 'text-teal-200 hover:text-amber-500 hover:bg-amber-50'
+                    }`}
+                    title={entry.has_branching ? '分岐を解除' : '合否で分岐する'}
+                >
+                    <GitBranch className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => onRemove(entry.id)} className="p-1.5 text-red-200 hover:text-red-500 rounded-lg transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                </button>
+            </div>
         </div>
     )
 }
@@ -862,42 +814,31 @@ function TimelineSlotCard({
 
 function AddSlotModal({
     selections,
-    branchCondition,
+    conditionType,
     onSelect,
     onClose,
 }: {
     selections: UserExamSelection[]
-    branchCondition: BranchCondition | null
+    conditionType: ConditionType
     onSelect: (examSessionId: string) => void
     onClose: () => void
 }) {
     return (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={onClose}>
-            <div
-                className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
-                onClick={e => e.stopPropagation()}
-            >
+            <div className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-4 border-b border-teal-100">
                     <h3 className="text-lg font-bold text-teal-700">
-                        {branchCondition ? (
-                            <span className="flex items-center gap-2">
-                                {branchCondition === '合格'
-                                    ? <CheckCircle className="w-5 h-5 text-green-500" />
-                                    : <XCircle className="w-5 h-5 text-red-500" />
-                                }
-                                {branchCondition}の場合
-                            </span>
+                        {conditionType === 'if_pass' ? (
+                            <span className="flex items-center gap-2"><CheckCircle className="w-5 h-5 text-green-500" />合格の場合</span>
+                        ) : conditionType === 'if_fail' ? (
+                            <span className="flex items-center gap-2"><XCircle className="w-5 h-5 text-red-500" />不合格の場合</span>
                         ) : '学校を選択'}
                     </h3>
-                    <button onClick={onClose} className="p-2 text-teal-300 hover:text-teal-500 rounded-lg">
-                        <X className="w-5 h-5" />
-                    </button>
+                    <button onClick={onClose} className="p-2 text-teal-300 hover:text-teal-500 rounded-lg"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="overflow-y-auto p-3 space-y-1.5">
                     {selections.length === 0 ? (
-                        <p className="text-teal-300 text-center py-8 text-sm">
-                            受験校リストが空です。先に学校を追加してください。
-                        </p>
+                        <p className="text-teal-300 text-center py-8 text-sm">受験校リストが空です</p>
                     ) : (
                         selections.map(sel => (
                             <button
@@ -906,16 +847,12 @@ function AddSlotModal({
                                 className="w-full text-left px-4 py-3 rounded-lg hover:bg-teal-50 active:bg-teal-100 transition-colors flex items-center gap-3"
                             >
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
-                                    sel.exam_session?.time_period === '午後'
-                                        ? 'bg-indigo-100 text-indigo-600'
-                                        : 'bg-amber-100 text-amber-600'
+                                    sel.exam_session?.time_period === '午後' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
                                 }`}>
                                     {sel.exam_session?.test_date ? formatShortDate(sel.exam_session.test_date) : '?'}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-teal-700 text-sm truncate">
-                                        {sel.exam_session?.school?.name}
-                                    </div>
+                                    <div className="font-semibold text-teal-700 text-sm truncate">{sel.exam_session?.school?.name}</div>
                                     <div className="text-xs text-teal-400">
                                         {sel.exam_session?.session_label} {sel.exam_session?.time_period}
                                         {sel.exam_session?.exam_subjects_label && ` / ${sel.exam_session.exam_subjects_label}`}
