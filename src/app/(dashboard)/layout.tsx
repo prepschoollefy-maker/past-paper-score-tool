@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, Plus, History, LayoutDashboard, Settings } from 'lucide-react'
+import { LogOut, Plus, History, LayoutDashboard, Settings, CalendarDays } from 'lucide-react'
 import { signOut } from '@/app/actions/auth'
 
 export default async function DashboardLayout({
@@ -51,6 +51,10 @@ export default async function DashboardLayout({
                             <Link href="/records/new" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
                                 <Plus className="w-4 h-4" />
                                 得点入力
+                            </Link>
+                            <Link href="/plan" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
+                                <CalendarDays className="w-4 h-4" />
+                                受験計画
                             </Link>
                             {isAdmin && (
                                 <Link href="/admin-panel" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
@@ -103,6 +107,13 @@ export default async function DashboardLayout({
                             <Plus className="w-7 h-7 text-white" />
                         </div>
                         <span className="text-xs font-medium text-teal-400 mt-1">入力</span>
+                    </Link>
+                    <Link
+                        href="/plan"
+                        className="flex flex-col items-center gap-1 px-4 py-2 text-teal-800 hover:text-teal-400 active:bg-teal-200/30 rounded-lg transition-all"
+                    >
+                        <CalendarDays className="w-6 h-6" />
+                        <span className="text-xs font-medium">受験計画</span>
                     </Link>
                     {isAdmin && (
                         <Link
