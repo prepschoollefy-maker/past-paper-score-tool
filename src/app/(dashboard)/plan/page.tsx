@@ -11,7 +11,7 @@ import {
 type Tab = 'selections' | 'schedule'
 
 export default function PlanPage() {
-    const [activeTab, setActiveTab] = useState<Tab>('selections')
+    const [activeTab, setActiveTab] = useState<Tab>('schedule')
 
     return (
         <div className="space-y-4">
@@ -19,17 +19,6 @@ export default function PlanPage() {
 
             {/* タブ切り替え */}
             <div className="flex bg-white rounded-xl shadow-md border border-teal-200 p-1">
-                <button
-                    onClick={() => setActiveTab('selections')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                        activeTab === 'selections'
-                            ? 'bg-teal-400 text-white shadow-sm'
-                            : 'text-teal-600 hover:bg-teal-50'
-                    }`}
-                >
-                    <ListChecks className="w-4 h-4" />
-                    受験校リスト
-                </button>
                 <button
                     onClick={() => setActiveTab('schedule')}
                     className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-colors ${
@@ -40,6 +29,17 @@ export default function PlanPage() {
                 >
                     <CalendarDays className="w-4 h-4" />
                     スケジュール
+                </button>
+                <button
+                    onClick={() => setActiveTab('selections')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                        activeTab === 'selections'
+                            ? 'bg-teal-400 text-white shadow-sm'
+                            : 'text-teal-600 hover:bg-teal-50'
+                    }`}
+                >
+                    <ListChecks className="w-4 h-4" />
+                    受験校リスト
                 </button>
             </div>
 
@@ -74,15 +74,6 @@ function formatDateTime(d?: string | null): string | null {
     if (!d) return null
     const date = new Date(d)
     return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-function sortByDateAndPeriod(a: UserExamSelection, b: UserExamSelection): number {
-    const dateA = a.exam_session?.test_date || ''
-    const dateB = b.exam_session?.test_date || ''
-    if (dateA !== dateB) return dateA.localeCompare(dateB)
-    const pA = a.exam_session?.time_period === '午後' ? 1 : 0
-    const pB = b.exam_session?.time_period === '午後' ? 1 : 0
-    return pA - pB
 }
 
 // ============================================================
@@ -307,7 +298,7 @@ function SessionRow({
                         <span>{session.session_label}</span>
                         <span>{session.time_period}</span>
                         {session.exam_subjects_label && <span>{session.exam_subjects_label}</span>}
-                        {session.sapix != null && <span className="text-teal-400">S{session.sapix}</span>}
+                        {session.yotsuya_80 != null && <span className="text-teal-400">Y{session.yotsuya_80}</span>}
                     </div>
                 </button>
                 <ChevronDown
@@ -348,103 +339,19 @@ function DetailItem({ icon, label, value }: { icon?: React.ReactNode; label: str
 }
 
 // ============================================================
-// フローチャート型定義 & ツリー構築
+// スケジュールタブ（日程カラム型）
 // ============================================================
 
-type FlowNode = {
-    type: 'exam'
-    session: ExamSession
-    selectionId: string
-    isConditional: boolean
-    branching: boolean
-    passPath: FlowNode | null
-    failPath: FlowNode | null
-    next: FlowNode | null
-} | {
-    type: 'terminal'
-    label: string
-    branchSourceId?: string
-    branchType?: 'pass' | 'fail'
-}
-
-function buildFlowTree(selections: UserExamSelection[]): FlowNode | null {
-    // メインフロー: 条件なしの学校を日付順
-    const mainFlow = selections
-        .filter(s => s.exam_session?.test_date && !s.condition_source_id)
-        .sort(sortByDateAndPeriod)
-    return buildChain(mainFlow, 0, selections)
-}
-
-function buildChain(
-    flowSchools: UserExamSelection[],
-    index: number,
-    all: UserExamSelection[]
-): FlowNode | null {
-    if (index >= flowSchools.length) return null
-    const sel = flowSchools[index]
-
-    // この学校に紐づく条件付き学校
-    const passChildren = all
-        .filter(s => s.condition_source_id === sel.id && s.condition_type === 'pass' && s.exam_session?.test_date)
-        .sort(sortByDateAndPeriod)
-    const failChildren = all
-        .filter(s => s.condition_source_id === sel.id && s.condition_type === 'fail' && s.exam_session?.test_date)
-        .sort(sortByDateAndPeriod)
-
-    const isBranching = sel.on_pass_action === 'end' || passChildren.length > 0 || failChildren.length > 0
-
-    if (isBranching) {
-        const remaining = flowSchools.slice(index + 1)
-
-        // 合格パス: 条件付きpass学校のみ（なければ受験終了）
-        let passPath: FlowNode | null
-        if (passChildren.length > 0) {
-            const passFlow = [...passChildren, ...remaining].sort(sortByDateAndPeriod)
-            passPath = buildChain(passFlow, 0, all)
-                || { type: 'terminal', label: '受験終了', branchSourceId: sel.id, branchType: 'pass' }
-        } else {
-            passPath = { type: 'terminal', label: '受験終了', branchSourceId: sel.id, branchType: 'pass' }
-        }
-
-        // 不合格パス: 条件付きfail学校 + 残りのメインフロー
-        const failFlow = failChildren.length > 0
-            ? [...failChildren, ...remaining].sort(sortByDateAndPeriod)
-            : remaining
-        const failPath = buildChain(failFlow, 0, all)
-            || { type: 'terminal', label: '全日程終了', branchSourceId: sel.id, branchType: 'fail' }
-
-        return {
-            type: 'exam',
-            session: sel.exam_session!,
-            selectionId: sel.id,
-            isConditional: !!sel.condition_source_id,
-            branching: true,
-            passPath,
-            failPath,
-            next: null,
-        }
-    }
-
-    return {
-        type: 'exam',
-        session: sel.exam_session!,
-        selectionId: sel.id,
-        isConditional: !!sel.condition_source_id,
-        branching: false,
-        passPath: null,
-        failPath: null,
-        next: buildChain(flowSchools, index + 1, all),
-    }
-}
-
-// ============================================================
-// スケジュールタブ（フローチャート）
-// ============================================================
+type AddModalState = {
+    dateFilter?: string
+    sourceId?: string
+    conditionType?: 'pass' | 'fail'
+} | null
 
 function ScheduleTab() {
     const [mySelections, setMySelections] = useState<UserExamSelection[]>([])
     const [loading, setLoading] = useState(true)
-    const [addModal, setAddModal] = useState<{ sourceId: string; conditionType: 'pass' | 'fail' } | null>(null)
+    const [addModal, setAddModal] = useState<AddModalState>(null)
     const supabase = createClient()
 
     const fetchSelections = useCallback(async () => {
@@ -458,35 +365,27 @@ function ScheduleTab() {
 
     useEffect(() => { fetchSelections() }, [fetchSelections])
 
-    // 分岐ON/OFF
-    const toggleBranching = async (selectionId: string, currentAction: string) => {
-        const newAction = currentAction === 'end' ? 'continue' : 'end'
-
-        if (newAction === 'continue') {
-            // 分岐解除時: この学校に紐づく条件付き学校の条件をクリア
-            await supabase.from('user_exam_selections')
-                .update({ condition_source_id: null, condition_type: null })
-                .eq('condition_source_id', selectionId)
-        }
-
-        await supabase.from('user_exam_selections')
-            .update({ on_pass_action: newAction })
-            .eq('id', selectionId)
-
+    // 学校を追加（通常）
+    const addSchool = async (examSessionId: string) => {
+        if (mySelections.find(s => s.exam_session_id === examSessionId)) return
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        await supabase.from('user_exam_selections').insert({
+            user_id: user.id,
+            exam_session_id: examSessionId,
+        })
         fetchSelections()
+        setAddModal(null)
     }
 
     // 分岐パスに学校を追加
     const addToBranch = async (examSessionId: string, sourceId: string, conditionType: 'pass' | 'fail') => {
         const existing = mySelections.find(s => s.exam_session_id === examSessionId)
-
         if (existing) {
-            // 既存の選択を条件付きに変更
             await supabase.from('user_exam_selections')
                 .update({ condition_source_id: sourceId, condition_type: conditionType })
                 .eq('id', existing.id)
         } else {
-            // 新規追加（条件付き）
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             await supabase.from('user_exam_selections').insert({
@@ -496,12 +395,34 @@ function ScheduleTab() {
                 condition_type: conditionType,
             })
         }
-
         fetchSelections()
         setAddModal(null)
     }
 
-    // 条件を解除（メインフローに戻す）
+    // 学校を削除
+    const handleRemove = async (selectionId: string) => {
+        await supabase.from('user_exam_selections')
+            .update({ condition_source_id: null, condition_type: null })
+            .eq('condition_source_id', selectionId)
+        await supabase.from('user_exam_selections').delete().eq('id', selectionId)
+        fetchSelections()
+    }
+
+    // 分岐ON/OFF
+    const toggleBranching = async (selectionId: string, currentAction: string) => {
+        const newAction = currentAction === 'end' ? 'continue' : 'end'
+        if (newAction === 'continue') {
+            await supabase.from('user_exam_selections')
+                .update({ condition_source_id: null, condition_type: null })
+                .eq('condition_source_id', selectionId)
+        }
+        await supabase.from('user_exam_selections')
+            .update({ on_pass_action: newAction })
+            .eq('id', selectionId)
+        fetchSelections()
+    }
+
+    // 条件を解除
     const removeCondition = async (selectionId: string) => {
         await supabase.from('user_exam_selections')
             .update({ condition_source_id: null, condition_type: null })
@@ -509,53 +430,158 @@ function ScheduleTab() {
         fetchSelections()
     }
 
-    const flowTree = useMemo(() => buildFlowTree(mySelections), [mySelections])
+    // 年度判定
+    const examYear = useMemo(() => {
+        for (const sel of mySelections) {
+            if (sel.exam_session?.year) return sel.exam_session.year
+        }
+        const now = new Date()
+        return now.getMonth() <= 2 ? now.getFullYear() : now.getFullYear() + 1
+    }, [mySelections])
+
+    // 日程カラム生成
+    const dateColumns = useMemo(() => {
+        const cols: { key: string; label: string }[] = [
+            { key: 'january', label: '1月入試' },
+        ]
+        for (let day = 1; day <= 5; day++) {
+            const d = `${examYear}-02-0${day}`
+            const dow = DAY_NAMES[new Date(d + 'T00:00:00').getDay()]
+            cols.push({ key: d, label: `2/${day}(${dow})` })
+        }
+        const extraDates = new Set<string>()
+        mySelections.forEach(s => {
+            const d = s.exam_session?.test_date
+            if (d && d > `${examYear}-02-05`) extraDates.add(d)
+        })
+        Array.from(extraDates).sort().forEach(d => {
+            cols.push({ key: d, label: formatDateLabel(d) })
+        })
+        return cols
+    }, [mySelections, examYear])
+
+    // 日付別グループ
+    const selectionsByDate = useMemo(() => {
+        const map = new Map<string, UserExamSelection[]>()
+        for (const sel of mySelections) {
+            const d = sel.exam_session?.test_date
+            if (!d) continue
+            const key = d < `${examYear}-02-01` ? 'january' : d
+            if (!map.has(key)) map.set(key, [])
+            map.get(key)!.push(sel)
+        }
+        for (const [, sels] of map) {
+            sels.sort((a, b) => {
+                const pA = a.exam_session?.time_period === '午後' ? 1 : 0
+                const pB = b.exam_session?.time_period === '午後' ? 1 : 0
+                return pA - pB
+            })
+        }
+        return map
+    }, [mySelections, examYear])
 
     if (loading) return <Loading />
-
-    if (mySelections.length === 0) {
-        return (
-            <div className="bg-white rounded-xl shadow-md border border-teal-200 p-8 text-center">
-                <CalendarDays className="w-12 h-12 text-teal-200 mx-auto mb-3" />
-                <p className="text-teal-600 font-semibold mb-1">まだ受験校が選択されていません</p>
-                <p className="text-sm text-teal-400">
-                    「受験校リスト」タブで学校を選択すると<br />フローチャートが自動生成されます
-                </p>
-            </div>
-        )
-    }
 
     return (
         <div className="space-y-3">
             <div className="bg-white rounded-xl shadow-md border border-teal-200 px-4 py-3">
-                <p className="text-xs text-teal-500 flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                        <GitBranch className="w-3.5 h-3.5 text-amber-500" />
-                    </span>
-                    分岐ボタンで合否分岐を追加。合格・不合格の各パスに学校を配置できます
+                <p className="text-xs text-teal-500">
+                    各日程の「+」から学校を追加。
+                    <GitBranch className="w-3 h-3 inline mx-0.5 text-amber-500" />
+                    で合否分岐を設定できます。
                 </p>
             </div>
 
             <div className="overflow-x-auto pb-2">
-                <div className="min-w-fit px-2 py-4">
-                    {flowTree && (
-                        <FlowNodeRenderer
-                            node={flowTree}
-                            onToggle={toggleBranching}
-                            onOpenAddModal={(sourceId, conditionType) => setAddModal({ sourceId, conditionType })}
-                            onRemoveCondition={removeCondition}
-                        />
-                    )}
+                <div className="flex gap-3 min-w-fit px-1 py-2">
+                    {dateColumns.map(col => {
+                        const sels = selectionsByDate.get(col.key) || []
+                        const isJanuary = col.key === 'january'
+                        const amSels = sels.filter(s => s.exam_session?.time_period !== '午後')
+                        const pmSels = sels.filter(s => s.exam_session?.time_period === '午後')
+
+                        return (
+                            <div key={col.key} className="w-44 flex-shrink-0 bg-white rounded-xl border-2 border-teal-200 shadow-sm overflow-hidden flex flex-col">
+                                <div className={`px-3 py-2 text-center border-b border-teal-200 ${isJanuary ? 'bg-amber-50' : 'bg-teal-50'}`}>
+                                    <div className={`font-bold text-sm ${isJanuary ? 'text-amber-700' : 'text-teal-700'}`}>
+                                        {col.label}
+                                    </div>
+                                </div>
+
+                                <div className="p-2 flex-1 flex flex-col">
+                                    {isJanuary ? (
+                                        sels.map(sel => (
+                                            <SchoolCard
+                                                key={sel.id}
+                                                selection={sel}
+                                                allSelections={mySelections}
+                                                showDate
+                                                onToggleBranch={toggleBranching}
+                                                onAddToBranch={(sid, ct) => setAddModal({ sourceId: sid, conditionType: ct })}
+                                                onRemoveCondition={removeCondition}
+                                                onRemove={handleRemove}
+                                            />
+                                        ))
+                                    ) : (
+                                        <>
+                                            {amSels.length > 0 && (
+                                                <div className="mb-1">
+                                                    <div className="text-[10px] text-amber-500 font-bold mb-0.5">午前</div>
+                                                    {amSels.map(sel => (
+                                                        <SchoolCard
+                                                            key={sel.id}
+                                                            selection={sel}
+                                                            allSelections={mySelections}
+                                                            onToggleBranch={toggleBranching}
+                                                            onAddToBranch={(sid, ct) => setAddModal({ sourceId: sid, conditionType: ct })}
+                                                            onRemoveCondition={removeCondition}
+                                                            onRemove={handleRemove}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {pmSels.length > 0 && (
+                                                <div className="mb-1">
+                                                    <div className="text-[10px] text-indigo-500 font-bold mb-0.5">午後</div>
+                                                    {pmSels.map(sel => (
+                                                        <SchoolCard
+                                                            key={sel.id}
+                                                            selection={sel}
+                                                            allSelections={mySelections}
+                                                            onToggleBranch={toggleBranching}
+                                                            onAddToBranch={(sid, ct) => setAddModal({ sourceId: sid, conditionType: ct })}
+                                                            onRemoveCondition={removeCondition}
+                                                            onRemove={handleRemove}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+
+                                    <button
+                                        onClick={() => setAddModal({ dateFilter: col.key })}
+                                        className="mt-auto py-2 border-2 border-dashed border-teal-200 rounded-lg text-xs text-teal-400 hover:border-teal-400 hover:text-teal-600 transition-colors"
+                                    >
+                                        + 学校を追加
+                                    </button>
+                                </div>
+                            </div>
+                        )
+                    })}
                 </div>
             </div>
 
-            {/* 学校追加モーダル */}
             {addModal && (
-                <AddBranchModal
-                    mySelections={mySelections}
+                <AddSchoolModal
+                    dateFilter={addModal.dateFilter}
                     sourceId={addModal.sourceId}
                     conditionType={addModal.conditionType}
-                    onSelect={(examSessionId) => addToBranch(examSessionId, addModal.sourceId, addModal.conditionType)}
+                    mySelections={mySelections}
+                    onSelect={addModal.sourceId
+                        ? (eid) => addToBranch(eid, addModal.sourceId!, addModal.conditionType!)
+                        : addSchool
+                    }
                     onClose={() => setAddModal(null)}
                 />
             )}
@@ -564,157 +590,110 @@ function ScheduleTab() {
 }
 
 // ============================================================
-// フローチャートノード描画
+// 学校カード
 // ============================================================
 
-function FlowNodeRenderer({
-    node,
-    onToggle,
-    onOpenAddModal,
+function SchoolCard({
+    selection,
+    allSelections,
+    showDate,
+    onToggleBranch,
+    onAddToBranch,
     onRemoveCondition,
+    onRemove,
 }: {
-    node: FlowNode
-    onToggle: (selectionId: string, currentAction: string) => void
-    onOpenAddModal: (sourceId: string, conditionType: 'pass' | 'fail') => void
+    selection: UserExamSelection
+    allSelections: UserExamSelection[]
+    showDate?: boolean
+    onToggleBranch: (selectionId: string, currentAction: string) => void
+    onAddToBranch: (sourceId: string, conditionType: 'pass' | 'fail') => void
     onRemoveCondition: (selectionId: string) => void
+    onRemove: (selectionId: string) => void
 }) {
-    if (node.type === 'terminal') {
-        if (node.branchSourceId) {
-            return (
-                <button
-                    onClick={() => onOpenAddModal(node.branchSourceId!, node.branchType!)}
-                    className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-dashed border-green-300 rounded-xl px-3 py-2 text-center hover:border-green-500 transition-colors group whitespace-nowrap flex-shrink-0"
-                >
-                    <div className="text-green-600 font-bold text-xs">{node.label}</div>
-                    <div className="text-[10px] text-green-400 group-hover:text-green-600">タップで追加</div>
-                </button>
-            )
-        }
-        return (
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl px-3 py-2 text-center shadow-sm whitespace-nowrap flex-shrink-0">
-                <div className="text-green-600 font-bold text-xs">{node.label}</div>
-            </div>
-        )
-    }
-
-    const { session, selectionId, isConditional, branching, passPath, failPath, next } = node
+    const session = selection.exam_session!
+    const hasBranching = selection.on_pass_action === 'end'
+        || allSelections.some(s => s.condition_source_id === selection.id)
+    const isConditional = !!selection.condition_source_id
+    const sourceSelection = isConditional
+        ? allSelections.find(s => s.id === selection.condition_source_id)
+        : null
 
     return (
-        <div className="flex items-center">
-            {/* 学校ノードカード */}
-            <div className={`relative rounded-xl border-2 shadow-sm transition-colors flex-shrink-0 ${
-                branching ? 'border-amber-300 bg-amber-50/30' : 'border-teal-200 bg-white'
-            } ${isConditional ? 'w-36' : 'w-44'}`}>
-                {isConditional && (
-                    <button
-                        onClick={() => onRemoveCondition(selectionId)}
-                        className="absolute -top-2 -left-2 w-5 h-5 bg-gray-400 hover:bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow transition-colors z-10"
-                        title="メインフローに戻す"
-                    >
-                        ×
-                    </button>
-                )}
-                <div className="p-2.5">
-                    <div className={`font-bold text-teal-800 truncate pr-5 ${isConditional ? 'text-[11px]' : 'text-xs'}`}>
+        <div className={`rounded-lg p-2 mb-1.5 ${
+            hasBranching ? 'bg-amber-50 border border-amber-200' : 'bg-teal-50/50 border border-teal-100'
+        }`}>
+            {isConditional && sourceSelection && (
+                <div className={`text-[9px] px-1.5 py-0.5 rounded mb-1 inline-block ${
+                    selection.condition_type === 'pass'
+                        ? 'bg-green-100 text-green-600'
+                        : 'bg-red-100 text-red-500'
+                }`}>
+                    {sourceSelection.exam_session?.school?.name?.slice(0, 4)}
+                    {selection.condition_type === 'pass' ? '○' : '✗'}なら
+                </div>
+            )}
+
+            <div className="flex items-start justify-between gap-1">
+                <div className="min-w-0 flex-1">
+                    <div className="font-bold text-teal-800 text-xs truncate">
                         {session.school?.name}
                     </div>
-                    <div className="text-[10px] text-teal-500 mt-0.5">
-                        {session.session_label} · {formatDateLabel(session.test_date!)} {session.time_period}
+                    <div className="text-[10px] text-teal-500">
+                        {showDate && session.test_date && `${formatDateLabel(session.test_date)} `}
+                        {session.session_label}
+                        {session.exam_subjects_label && ` ${session.exam_subjects_label}`}
                     </div>
-                    <div className="flex flex-wrap items-center gap-1 text-[10px] text-teal-400 mt-0.5">
-                        {session.exam_subjects_label && <span>{session.exam_subjects_label}</span>}
-                        {session.sapix != null && (
-                            <span className="bg-teal-50 px-1 rounded">S{session.sapix}</span>
+                    <div className="flex items-center gap-1.5 text-[10px] text-teal-400">
+                        {session.yotsuya_80 != null && <span>Y{session.yotsuya_80}</span>}
+                        {session.gender_type && (
+                            <span className={
+                                session.gender_type === '男子校' ? 'text-blue-500' :
+                                session.gender_type === '女子校' ? 'text-pink-500' : 'text-purple-500'
+                            }>
+                                {session.gender_type === '共学' ? '共' : session.gender_type[0]}
+                            </span>
                         )}
                     </div>
                 </div>
-                {/* 分岐トグルボタン（右側） */}
-                <button
-                    onClick={() => onToggle(selectionId, branching ? 'end' : 'continue')}
-                    className={`absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 flex items-center justify-center shadow-sm transition-all z-10 ${
-                        branching
-                            ? 'bg-amber-400 border-amber-500 text-white hover:bg-amber-500'
-                            : 'bg-white border-teal-200 text-teal-300 hover:border-amber-400 hover:text-amber-500'
-                    }`}
-                    title={branching ? '分岐を解除' : '合否で分岐する'}
-                >
-                    <GitBranch className="w-3 h-3" />
-                </button>
+
+                <div className="flex flex-col gap-0.5 flex-shrink-0">
+                    <button
+                        onClick={() => onToggleBranch(selection.id, hasBranching ? 'end' : 'continue')}
+                        className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                            hasBranching
+                                ? 'bg-amber-400 text-white'
+                                : 'text-teal-300 hover:text-amber-500'
+                        }`}
+                        title={hasBranching ? '分岐を解除' : '合否で分岐'}
+                    >
+                        <GitBranch className="w-3 h-3" />
+                    </button>
+                    <button
+                        onClick={() => isConditional ? onRemoveCondition(selection.id) : onRemove(selection.id)}
+                        className="w-5 h-5 rounded text-teal-300 hover:text-red-500 flex items-center justify-center transition-colors"
+                        title={isConditional ? '条件を解除' : '削除'}
+                    >
+                        <X className="w-3 h-3" />
+                    </button>
+                </div>
             </div>
 
-            {/* 分岐あり: 横向きフォーク */}
-            {branching && passPath ? (
-                <>
-                    {/* ノードからフォーク点への横コネクタ */}
-                    <div className="w-5 h-0.5 bg-gray-300 flex-shrink-0" />
-                    {/* フォーク: 合格（上）/不合格（下）を縦に並べ、左の縦線で接続 */}
-                    <div className="border-l-2 border-gray-300 flex flex-col justify-center flex-shrink-0">
-                        {/* 合格パス */}
-                        <div className="flex items-center py-2 pl-0">
-                            <div className="h-0.5 w-3 bg-green-400 flex-shrink-0" />
-                            <div className="flex items-center gap-0.5 text-[11px] font-bold text-green-600 mx-1 whitespace-nowrap flex-shrink-0">
-                                <CheckCircle className="w-3 h-3" />合格
-                            </div>
-                            <div className="h-0.5 w-2 bg-green-300 flex-shrink-0" />
-                            <FlowNodeRenderer
-                                node={passPath}
-                                onToggle={onToggle}
-                                onOpenAddModal={onOpenAddModal}
-                                onRemoveCondition={onRemoveCondition}
-                            />
-                            {passPath.type !== 'terminal' && (
-                                <>
-                                    <div className="h-0.5 w-2 bg-green-200 flex-shrink-0" />
-                                    <button
-                                        onClick={() => onOpenAddModal(selectionId, 'pass')}
-                                        className="py-0.5 px-2 border border-dashed border-green-200 rounded-lg text-[10px] text-green-400 hover:border-green-400 hover:text-green-600 transition-colors whitespace-nowrap flex-shrink-0"
-                                    >
-                                        +
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                        {/* 不合格パス */}
-                        <div className="flex items-center py-2 pl-0">
-                            <div className="h-0.5 w-3 bg-red-400 flex-shrink-0" />
-                            <div className="flex items-center gap-0.5 text-[11px] font-bold text-red-500 mx-1 whitespace-nowrap flex-shrink-0">
-                                <XCircle className="w-3 h-3" />不合格
-                            </div>
-                            <div className="h-0.5 w-2 bg-red-300 flex-shrink-0" />
-                            {failPath ? (
-                                <FlowNodeRenderer
-                                    node={failPath}
-                                    onToggle={onToggle}
-                                    onOpenAddModal={onOpenAddModal}
-                                    onRemoveCondition={onRemoveCondition}
-                                />
-                            ) : (
-                                <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-center whitespace-nowrap flex-shrink-0">
-                                    <div className="text-[11px] text-gray-400">全日程終了</div>
-                                </div>
-                            )}
-                            <div className="h-0.5 w-2 bg-red-200 flex-shrink-0" />
-                            <button
-                                onClick={() => onOpenAddModal(selectionId, 'fail')}
-                                className="py-0.5 px-2 border border-dashed border-red-200 rounded-lg text-[10px] text-red-300 hover:border-red-400 hover:text-red-500 transition-colors whitespace-nowrap flex-shrink-0"
-                            >
-                                +
-                            </button>
-                        </div>
-                    </div>
-                </>
-            ) : next ? (
-                <>
-                    {/* 横コネクタ */}
-                    <div className="h-0.5 w-5 bg-gray-300 flex-shrink-0" />
-                    <FlowNodeRenderer
-                        node={next}
-                        onToggle={onToggle}
-                        onOpenAddModal={onOpenAddModal}
-                        onRemoveCondition={onRemoveCondition}
-                    />
-                </>
-            ) : null}
+            {hasBranching && (
+                <div className="mt-1.5 pt-1 border-t border-amber-200 flex gap-1">
+                    <button
+                        onClick={() => onAddToBranch(selection.id, 'pass')}
+                        className="flex-1 py-1 rounded text-[10px] bg-green-50 text-green-500 hover:bg-green-100 flex items-center justify-center gap-0.5 transition-colors"
+                    >
+                        <CheckCircle className="w-2.5 h-2.5" />合格→
+                    </button>
+                    <button
+                        onClick={() => onAddToBranch(selection.id, 'fail')}
+                        className="flex-1 py-1 rounded text-[10px] bg-red-50 text-red-400 hover:bg-red-100 flex items-center justify-center gap-0.5 transition-colors"
+                    >
+                        <XCircle className="w-2.5 h-2.5" />不合格→
+                    </button>
+                </div>
+            )}
         </div>
     )
 }
@@ -723,16 +702,18 @@ function FlowNodeRenderer({
 // 学校追加モーダル
 // ============================================================
 
-function AddBranchModal({
-    mySelections,
+function AddSchoolModal({
+    dateFilter,
     sourceId,
     conditionType,
+    mySelections,
     onSelect,
     onClose,
 }: {
+    dateFilter?: string
+    sourceId?: string
+    conditionType?: 'pass' | 'fail'
     mySelections: UserExamSelection[]
-    sourceId: string
-    conditionType: 'pass' | 'fail'
     onSelect: (examSessionId: string) => void
     onClose: () => void
 }) {
@@ -754,25 +735,35 @@ function AddBranchModal({
         fetchSessions()
     }, [supabase])
 
-    const sourceSelection = mySelections.find(s => s.id === sourceId)
+    const sourceSelection = sourceId ? mySelections.find(s => s.id === sourceId) : null
     const sourceExamSessionId = sourceSelection?.exam_session_id
-    const alreadyOnThisPath = new Set(
+    const selectedIds = new Set(mySelections.map(s => s.exam_session_id))
+    const alreadyOnThisPath = sourceId ? new Set(
         mySelections
             .filter(s => s.condition_source_id === sourceId && s.condition_type === conditionType)
             .map(s => s.exam_session_id)
-    )
-    const selectedIds = new Set(mySelections.map(s => s.exam_session_id))
+    ) : new Set<string>()
 
     const filtered = useMemo(() => {
+        let sessions = examSessions
+
+        // 日付フィルタ
+        if (dateFilter === 'january') {
+            sessions = sessions.filter(s => new Date(s.test_date! + 'T00:00:00').getMonth() === 0)
+        } else if (dateFilter) {
+            sessions = sessions.filter(s => s.test_date === dateFilter)
+        }
+
         const q = searchQuery.toLowerCase()
-        return examSessions.filter(s => {
-            if (s.id === sourceExamSessionId) return false
+        return sessions.filter(s => {
+            if (sourceExamSessionId && s.id === sourceExamSessionId) return false
             if (alreadyOnThisPath.has(s.id)) return false
+            if (!sourceId && selectedIds.has(s.id)) return false
             const name = s.school?.name || ''
             const label = s.session_label || ''
             return name.toLowerCase().includes(q) || label.toLowerCase().includes(q)
         })
-    }, [examSessions, searchQuery, sourceExamSessionId, alreadyOnThisPath])
+    }, [examSessions, dateFilter, searchQuery, sourceExamSessionId, alreadyOnThisPath, sourceId, selectedIds])
 
     const grouped = useMemo(() => {
         const groups: { key: string; sessions: ExamSession[] }[] = []
@@ -788,31 +779,37 @@ function AddBranchModal({
         return groups
     }, [filtered])
 
+    // ヘッダー
+    let headerTitle: React.ReactNode
+    let headerSub: string | null = null
+    if (sourceId && sourceSelection) {
+        headerTitle = conditionType === 'pass'
+            ? <><CheckCircle className="w-5 h-5 text-green-500" />合格の場合</>
+            : <><XCircle className="w-5 h-5 text-red-500" />不合格の場合</>
+        headerSub = `${sourceSelection.exam_session?.school?.name} の結果に応じて受験する学校`
+    } else if (dateFilter === 'january') {
+        headerTitle = '1月入試 − 学校を追加'
+    } else if (dateFilter) {
+        headerTitle = `${formatDateLabel(dateFilter)} − 学校を追加`
+    } else {
+        headerTitle = '学校を追加'
+    }
+
     return (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={onClose}>
             <div className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                {/* ヘッダー */}
                 <div className="flex items-center justify-between p-4 border-b border-teal-100">
                     <div>
                         <h3 className="text-lg font-bold text-teal-700 flex items-center gap-2">
-                            {conditionType === 'pass' ? (
-                                <><CheckCircle className="w-5 h-5 text-green-500" />合格の場合</>
-                            ) : (
-                                <><XCircle className="w-5 h-5 text-red-500" />不合格の場合</>
-                            )}
+                            {headerTitle}
                         </h3>
-                        {sourceSelection && (
-                            <p className="text-xs text-teal-400 mt-0.5">
-                                {sourceSelection.exam_session?.school?.name} の結果に応じて受験する学校
-                            </p>
-                        )}
+                        {headerSub && <p className="text-xs text-teal-400 mt-0.5">{headerSub}</p>}
                     </div>
                     <button onClick={onClose} className="p-2 text-teal-300 hover:text-teal-500 rounded-lg">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* 検索バー */}
                 <div className="px-4 py-3 border-b border-teal-50">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-300" />
@@ -827,22 +824,23 @@ function AddBranchModal({
                     </div>
                 </div>
 
-                {/* 学校リスト */}
                 <div className="overflow-y-auto flex-1">
                     {loading ? (
                         <div className="flex items-center justify-center py-12">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-400" />
                         </div>
-                    ) : grouped.length === 0 ? (
+                    ) : filtered.length === 0 ? (
                         <p className="text-teal-300 text-center py-8 text-sm">
-                            {searchQuery ? '該当する学校がありません' : '試験データがありません'}
+                            {searchQuery ? '該当する学校がありません' : 'この日程の試験データがありません'}
                         </p>
                     ) : (
                         grouped.map(group => (
                             <div key={group.key}>
-                                <div className="px-4 py-1.5 bg-teal-50/80 text-xs font-bold text-teal-500 sticky top-0">
-                                    {group.key}
-                                </div>
+                                {(!dateFilter || dateFilter === 'january' || sourceId) && (
+                                    <div className="px-4 py-1.5 bg-teal-50/80 text-xs font-bold text-teal-500 sticky top-0">
+                                        {group.key}
+                                    </div>
+                                )}
                                 {group.sessions.map(session => {
                                     const isAlreadySelected = selectedIds.has(session.id)
                                     return (
