@@ -132,6 +132,8 @@ export interface UserExamSelection {
     priority: number | null
     memo: string | null
     on_pass_action: OnPassAction
+    condition_source_id: string | null
+    condition_type: 'pass' | 'fail' | null
     created_at: string
     // JOINで取得
     exam_session?: ExamSession

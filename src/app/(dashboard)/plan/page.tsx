@@ -76,6 +76,15 @@ function formatDateTime(d?: string | null): string | null {
     return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+function sortByDateAndPeriod(a: UserExamSelection, b: UserExamSelection): number {
+    const dateA = a.exam_session?.test_date || ''
+    const dateB = b.exam_session?.test_date || ''
+    if (dateA !== dateB) return dateA.localeCompare(dateB)
+    const pA = a.exam_session?.time_period === '午後' ? 1 : 0
+    const pB = b.exam_session?.time_period === '午後' ? 1 : 0
+    return pA - pB
+}
+
 // ============================================================
 // 受験校リストタブ
 // ============================================================
@@ -212,7 +221,6 @@ function SelectionsTab() {
 
                     return (
                         <div key={group.key} className="bg-white rounded-xl shadow-md border border-teal-200 overflow-hidden">
-                            {/* グループヘッダー */}
                             <button
                                 onClick={() => toggleGroup(group.key)}
                                 className="w-full flex items-center justify-between px-4 py-3 bg-teal-50 hover:bg-teal-100 transition-colors"
@@ -232,7 +240,6 @@ function SelectionsTab() {
                                 )}
                             </button>
 
-                            {/* セッション一覧 */}
                             {!isCollapsed && (
                                 <div className="divide-y divide-teal-100">
                                     {group.sessions.map(session => (
@@ -263,43 +270,29 @@ function SelectionsTab() {
 }
 
 // ============================================================
-// セッション行（コンパクト）
+// セッション行
 // ============================================================
 
 function SessionRow({
-    session,
-    isSelected,
-    isExpanded,
-    onToggle,
-    onToggleDetail,
+    session, isSelected, isExpanded, onToggle, onToggleDetail,
 }: {
-    session: ExamSession
-    isSelected: boolean
-    isExpanded: boolean
-    onToggle: () => void
-    onToggleDetail: () => void
+    session: ExamSession; isSelected: boolean; isExpanded: boolean
+    onToggle: () => void; onToggleDetail: () => void
 }) {
     return (
         <div>
             <div className="flex items-center gap-2 px-4 py-3 hover:bg-teal-50/50 transition-colors">
-                {/* 追加/削除ボタン */}
                 <button
                     onClick={onToggle}
                     className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                        isSelected
-                            ? 'bg-teal-400 text-white'
-                            : 'bg-teal-50 text-teal-300 hover:bg-teal-100 hover:text-teal-500'
+                        isSelected ? 'bg-teal-400 text-white' : 'bg-teal-50 text-teal-300 hover:bg-teal-100 hover:text-teal-500'
                     }`}
                 >
                     {isSelected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                 </button>
-
-                {/* メイン情報 */}
                 <button onClick={onToggleDetail} className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-2">
-                        <span className="font-semibold text-teal-700 truncate text-sm">
-                            {session.school?.name}
-                        </span>
+                        <span className="font-semibold text-teal-700 truncate text-sm">{session.school?.name}</span>
                         {session.gender_type && (
                             <span className={`text-[10px] px-1 py-0.5 rounded flex-shrink-0 ${
                                 session.gender_type === '男子校' ? 'bg-blue-100 text-blue-600' :
@@ -314,51 +307,29 @@ function SessionRow({
                         <span>{session.session_label}</span>
                         <span>{session.time_period}</span>
                         {session.exam_subjects_label && <span>{session.exam_subjects_label}</span>}
-                        {session.sapix != null && (
-                            <span className="text-teal-400">S{session.sapix}</span>
-                        )}
+                        {session.sapix != null && <span className="text-teal-400">S{session.sapix}</span>}
                     </div>
                 </button>
-
-                {/* 展開アイコン */}
                 <ChevronDown
                     className={`w-4 h-4 text-teal-300 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
                     onClick={onToggleDetail}
                 />
             </div>
-
-            {/* 詳細展開 */}
             {isExpanded && (
                 <div className="px-4 pb-3 ml-10 text-xs text-teal-600 space-y-1.5">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 bg-teal-50/70 rounded-lg p-3">
-                        {session.assembly_time && (
-                            <DetailItem icon={<Clock className="w-3 h-3" />} label="集合" value={session.assembly_time.slice(0, 5)} />
-                        )}
-                        {session.estimated_end_time && (
-                            <DetailItem icon={<Clock className="w-3 h-3" />} label="終了予想" value={session.estimated_end_time.slice(0, 5)} />
-                        )}
-                        {session.nearest_station && (
-                            <DetailItem icon={<MapPin className="w-3 h-3" />} label="最寄駅" value={session.nearest_station} />
-                        )}
-                        {session.exam_fee != null && (
-                            <DetailItem label="受験料" value={`¥${session.exam_fee.toLocaleString()}`} />
-                        )}
-                        {session.enrollment_fee != null && (
-                            <DetailItem label="入学金" value={`¥${session.enrollment_fee.toLocaleString()}`} />
-                        )}
-                        {session.deferral_available && (
-                            <DetailItem label="延納" value={session.deferral_deadline ? `〜${formatDateTime(session.deferral_deadline)}` : '可'} />
-                        )}
+                        {session.assembly_time && <DetailItem icon={<Clock className="w-3 h-3" />} label="集合" value={session.assembly_time.slice(0, 5)} />}
+                        {session.estimated_end_time && <DetailItem icon={<Clock className="w-3 h-3" />} label="終了予想" value={session.estimated_end_time.slice(0, 5)} />}
+                        {session.nearest_station && <DetailItem icon={<MapPin className="w-3 h-3" />} label="最寄駅" value={session.nearest_station} />}
+                        {session.exam_fee != null && <DetailItem label="受験料" value={`¥${session.exam_fee.toLocaleString()}`} />}
+                        {session.enrollment_fee != null && <DetailItem label="入学金" value={`¥${session.enrollment_fee.toLocaleString()}`} />}
+                        {session.deferral_available && <DetailItem label="延納" value={session.deferral_deadline ? `〜${formatDateTime(session.deferral_deadline)}` : '可'} />}
                         {session.yotsuya_80 != null && <DetailItem label="四谷80%" value={String(session.yotsuya_80)} />}
                         {session.yotsuya_50 != null && <DetailItem label="四谷50%" value={String(session.yotsuya_50)} />}
                         {session.sapix != null && <DetailItem label="SAPIX" value={String(session.sapix)} />}
                         {session.nichinoken_r4 != null && <DetailItem label="日能研R4" value={String(session.nichinoken_r4)} />}
-                        {session.result_announcement && (
-                            <DetailItem label="合格発表" value={formatDateTime(session.result_announcement)!} />
-                        )}
-                        {session.enrollment_deadline && (
-                            <DetailItem label="手続締切" value={formatDateTime(session.enrollment_deadline)!} />
-                        )}
+                        {session.result_announcement && <DetailItem label="合格発表" value={formatDateTime(session.result_announcement)!} />}
+                        {session.enrollment_deadline && <DetailItem label="手続締切" value={formatDateTime(session.enrollment_deadline)!} />}
                     </div>
                 </div>
             )}
@@ -384,6 +355,7 @@ type FlowNode = {
     type: 'exam'
     session: ExamSession
     selectionId: string
+    isConditional: boolean
     branching: boolean
     passPath: FlowNode | null
     failPath: FlowNode | null
@@ -391,46 +363,77 @@ type FlowNode = {
 } | {
     type: 'terminal'
     label: string
+    branchSourceId?: string
+    branchType?: 'pass' | 'fail'
 }
 
 function buildFlowTree(selections: UserExamSelection[]): FlowNode | null {
-    const sorted = [...selections]
-        .filter(s => s.exam_session?.test_date)
-        .sort((a, b) => {
-            const dateA = a.exam_session!.test_date!
-            const dateB = b.exam_session!.test_date!
-            if (dateA !== dateB) return dateA.localeCompare(dateB)
-            const pA = a.exam_session!.time_period === '午後' ? 1 : 0
-            const pB = b.exam_session!.time_period === '午後' ? 1 : 0
-            return pA - pB
-        })
-    return buildChain(sorted, 0)
+    // メインフロー: 条件なしの学校を日付順
+    const mainFlow = selections
+        .filter(s => s.exam_session?.test_date && !s.condition_source_id)
+        .sort(sortByDateAndPeriod)
+    return buildChain(mainFlow, 0, selections)
 }
 
-function buildChain(sorted: UserExamSelection[], index: number): FlowNode | null {
-    if (index >= sorted.length) return null
-    const sel = sorted[index]
-    const isBranching = sel.on_pass_action === 'end'
+function buildChain(
+    flowSchools: UserExamSelection[],
+    index: number,
+    all: UserExamSelection[]
+): FlowNode | null {
+    if (index >= flowSchools.length) return null
+    const sel = flowSchools[index]
+
+    // この学校に紐づく条件付き学校
+    const passChildren = all
+        .filter(s => s.condition_source_id === sel.id && s.condition_type === 'pass' && s.exam_session?.test_date)
+        .sort(sortByDateAndPeriod)
+    const failChildren = all
+        .filter(s => s.condition_source_id === sel.id && s.condition_type === 'fail' && s.exam_session?.test_date)
+        .sort(sortByDateAndPeriod)
+
+    const isBranching = sel.on_pass_action === 'end' || passChildren.length > 0 || failChildren.length > 0
 
     if (isBranching) {
+        const remaining = flowSchools.slice(index + 1)
+
+        // 合格パス: 条件付きpass学校のみ（なければ受験終了）
+        let passPath: FlowNode | null
+        if (passChildren.length > 0) {
+            const passFlow = [...passChildren, ...remaining].sort(sortByDateAndPeriod)
+            passPath = buildChain(passFlow, 0, all)
+                || { type: 'terminal', label: '受験終了', branchSourceId: sel.id, branchType: 'pass' }
+        } else {
+            passPath = { type: 'terminal', label: '受験終了', branchSourceId: sel.id, branchType: 'pass' }
+        }
+
+        // 不合格パス: 条件付きfail学校 + 残りのメインフロー
+        const failFlow = failChildren.length > 0
+            ? [...failChildren, ...remaining].sort(sortByDateAndPeriod)
+            : remaining
+        const failPath = buildChain(failFlow, 0, all)
+            || { type: 'terminal', label: '全日程終了', branchSourceId: sel.id, branchType: 'fail' }
+
         return {
             type: 'exam',
             session: sel.exam_session!,
             selectionId: sel.id,
+            isConditional: !!sel.condition_source_id,
             branching: true,
-            passPath: { type: 'terminal', label: '受験終了' },
-            failPath: buildChain(sorted, index + 1),
+            passPath,
+            failPath,
             next: null,
         }
     }
+
     return {
         type: 'exam',
         session: sel.exam_session!,
         selectionId: sel.id,
+        isConditional: !!sel.condition_source_id,
         branching: false,
         passPath: null,
         failPath: null,
-        next: buildChain(sorted, index + 1),
+        next: buildChain(flowSchools, index + 1, all),
     }
 }
 
@@ -441,6 +444,7 @@ function buildChain(sorted: UserExamSelection[], index: number): FlowNode | null
 function ScheduleTab() {
     const [mySelections, setMySelections] = useState<UserExamSelection[]>([])
     const [loading, setLoading] = useState(true)
+    const [addModal, setAddModal] = useState<{ sourceId: string; conditionType: 'pass' | 'fail' } | null>(null)
     const supabase = createClient()
 
     const fetchSelections = useCallback(async () => {
@@ -454,17 +458,55 @@ function ScheduleTab() {
 
     useEffect(() => { fetchSelections() }, [fetchSelections])
 
+    // 分岐ON/OFF
     const toggleBranching = async (selectionId: string, currentAction: string) => {
         const newAction = currentAction === 'end' ? 'continue' : 'end'
-        const { error } = await supabase
-            .from('user_exam_selections')
+
+        if (newAction === 'continue') {
+            // 分岐解除時: この学校に紐づく条件付き学校の条件をクリア
+            await supabase.from('user_exam_selections')
+                .update({ condition_source_id: null, condition_type: null })
+                .eq('condition_source_id', selectionId)
+        }
+
+        await supabase.from('user_exam_selections')
             .update({ on_pass_action: newAction })
             .eq('id', selectionId)
-        if (!error) {
-            setMySelections(prev => prev.map(s =>
-                s.id === selectionId ? { ...s, on_pass_action: newAction } : s
-            ))
+
+        fetchSelections()
+    }
+
+    // 分岐パスに学校を追加
+    const addToBranch = async (examSessionId: string, sourceId: string, conditionType: 'pass' | 'fail') => {
+        const existing = mySelections.find(s => s.exam_session_id === examSessionId)
+
+        if (existing) {
+            // 既存の選択を条件付きに変更
+            await supabase.from('user_exam_selections')
+                .update({ condition_source_id: sourceId, condition_type: conditionType })
+                .eq('id', existing.id)
+        } else {
+            // 新規追加（条件付き）
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            await supabase.from('user_exam_selections').insert({
+                user_id: user.id,
+                exam_session_id: examSessionId,
+                condition_source_id: sourceId,
+                condition_type: conditionType,
+            })
         }
+
+        fetchSelections()
+        setAddModal(null)
+    }
+
+    // 条件を解除（メインフローに戻す）
+    const removeCondition = async (selectionId: string) => {
+        await supabase.from('user_exam_selections')
+            .update({ condition_source_id: null, condition_type: null })
+            .eq('id', selectionId)
+        fetchSelections()
     }
 
     const flowTree = useMemo(() => buildFlowTree(mySelections), [mySelections])
@@ -490,15 +532,33 @@ function ScheduleTab() {
                     <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
                         <GitBranch className="w-3.5 h-3.5 text-amber-500" />
                     </span>
-                    カードの右にある分岐ボタンをタップすると「合格したら受験終了」の分岐を追加できます
+                    分岐ボタンで合否分岐を追加。合格・不合格の各パスに学校を配置できます
                 </p>
             </div>
 
             <div className="overflow-x-auto">
                 <div className="min-w-fit py-6 flex flex-col items-center">
-                    {flowTree && <FlowNodeRenderer node={flowTree} onToggle={toggleBranching} />}
+                    {flowTree && (
+                        <FlowNodeRenderer
+                            node={flowTree}
+                            onToggle={toggleBranching}
+                            onOpenAddModal={(sourceId, conditionType) => setAddModal({ sourceId, conditionType })}
+                            onRemoveCondition={removeCondition}
+                        />
+                    )}
                 </div>
             </div>
+
+            {/* 学校追加モーダル */}
+            {addModal && (
+                <AddBranchModal
+                    selections={mySelections}
+                    sourceId={addModal.sourceId}
+                    conditionType={addModal.conditionType}
+                    onSelect={(examSessionId) => addToBranch(examSessionId, addModal.sourceId, addModal.conditionType)}
+                    onClose={() => setAddModal(null)}
+                />
+            )}
         </div>
     )
 }
@@ -510,11 +570,29 @@ function ScheduleTab() {
 function FlowNodeRenderer({
     node,
     onToggle,
+    onOpenAddModal,
+    onRemoveCondition,
 }: {
     node: FlowNode
     onToggle: (selectionId: string, currentAction: string) => void
+    onOpenAddModal: (sourceId: string, conditionType: 'pass' | 'fail') => void
+    onRemoveCondition: (selectionId: string) => void
 }) {
     if (node.type === 'terminal') {
+        // 分岐パス上の終端ノード → タップで学校追加可能
+        if (node.branchSourceId) {
+            return (
+                <button
+                    onClick={() => onOpenAddModal(node.branchSourceId!, node.branchType!)}
+                    className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-dashed border-green-300 rounded-xl px-4 py-2.5 text-center hover:border-green-500 transition-colors group"
+                >
+                    <div className="text-green-600 font-bold text-sm">{node.label}</div>
+                    <div className="text-[10px] text-green-400 group-hover:text-green-600 mt-0.5">
+                        タップで学校を追加
+                    </div>
+                </button>
+            )
+        }
         return (
             <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl px-5 py-3 text-center shadow-sm">
                 <div className="text-green-600 font-bold text-sm">{node.label}</div>
@@ -522,16 +600,26 @@ function FlowNodeRenderer({
         )
     }
 
-    const { session, selectionId, branching, passPath, failPath, next } = node
+    const { session, selectionId, isConditional, branching, passPath, failPath, next } = node
 
     return (
         <div className="flex flex-col items-center">
             {/* 学校ノードカード */}
-            <div className={`relative w-52 rounded-xl border-2 shadow-sm transition-colors ${
+            <div className={`relative rounded-xl border-2 shadow-sm transition-colors ${
                 branching ? 'border-amber-300 bg-amber-50/30' : 'border-teal-200 bg-white'
-            }`}>
+            } ${isConditional ? 'w-44' : 'w-52'}`}>
+                {/* 条件付きバッジ（×で解除可能） */}
+                {isConditional && (
+                    <button
+                        onClick={() => onRemoveCondition(selectionId)}
+                        className="absolute -top-2.5 -left-2.5 w-5 h-5 bg-gray-400 hover:bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow transition-colors"
+                        title="メインフローに戻す"
+                    >
+                        ×
+                    </button>
+                )}
                 <div className="p-3">
-                    <div className="font-bold text-teal-800 text-sm truncate pr-4">
+                    <div className={`font-bold text-teal-800 truncate pr-4 ${isConditional ? 'text-xs' : 'text-sm'}`}>
                         {session.school?.name}
                     </div>
                     <div className="text-xs text-teal-500 mt-0.5">
@@ -542,7 +630,7 @@ function FlowNodeRenderer({
                         {session.sapix != null && (
                             <span className="bg-teal-50 px-1 rounded">S{session.sapix}</span>
                         )}
-                        {session.exam_fee != null && <span>¥{session.exam_fee.toLocaleString()}</span>}
+                        {!isConditional && session.exam_fee != null && <span>¥{session.exam_fee.toLocaleString()}</span>}
                     </div>
                 </div>
                 {/* 分岐トグルボタン */}
@@ -553,7 +641,7 @@ function FlowNodeRenderer({
                             ? 'bg-amber-400 border-amber-500 text-white hover:bg-amber-500'
                             : 'bg-white border-teal-200 text-teal-300 hover:border-amber-400 hover:text-amber-500'
                     }`}
-                    title={branching ? '分岐を解除' : '合格したら受験終了'}
+                    title={branching ? '分岐を解除' : '合否で分岐する'}
                 >
                     <GitBranch className="w-3.5 h-3.5" />
                 </button>
@@ -562,43 +650,165 @@ function FlowNodeRenderer({
             {/* 分岐あり: フォーク表示 */}
             {branching && passPath ? (
                 <>
-                    {/* 幹の縦線 */}
                     <div className="w-0.5 h-5 bg-gray-300" />
-                    {/* フォーク */}
                     <div className="flex">
                         {/* 合格パス */}
-                        <div className="flex flex-col items-center min-w-[140px] px-3 relative">
+                        <div className="flex flex-col items-center min-w-[130px] px-2 relative">
                             <div className="absolute top-0 right-0 left-1/2 h-0.5 bg-gray-300" />
                             <div className="w-0.5 h-4 bg-green-400" />
                             <div className="flex items-center gap-1 text-xs font-bold text-green-600 mb-2">
                                 <CheckCircle className="w-3.5 h-3.5" />合格
                             </div>
-                            <FlowNodeRenderer node={passPath} onToggle={onToggle} />
+                            <FlowNodeRenderer
+                                node={passPath}
+                                onToggle={onToggle}
+                                onOpenAddModal={onOpenAddModal}
+                                onRemoveCondition={onRemoveCondition}
+                            />
+                            {/* パスの末尾に＋ボタン（子ノードがある場合） */}
+                            {passPath.type !== 'terminal' && (
+                                <>
+                                    <div className="w-0.5 h-3 bg-green-200" />
+                                    <button
+                                        onClick={() => onOpenAddModal(selectionId, 'pass')}
+                                        className="py-1 px-2.5 border border-dashed border-green-200 rounded-lg text-[10px] text-green-400 hover:border-green-400 hover:text-green-600 transition-colors"
+                                    >
+                                        + 追加
+                                    </button>
+                                </>
+                            )}
                         </div>
                         {/* 不合格パス */}
-                        <div className="flex flex-col items-center min-w-[140px] px-3 relative">
+                        <div className="flex flex-col items-center min-w-[130px] px-2 relative">
                             <div className="absolute top-0 left-0 right-1/2 h-0.5 bg-gray-300" />
                             <div className="w-0.5 h-4 bg-red-400" />
                             <div className="flex items-center gap-1 text-xs font-bold text-red-500 mb-2">
                                 <XCircle className="w-3.5 h-3.5" />不合格
                             </div>
                             {failPath ? (
-                                <FlowNodeRenderer node={failPath} onToggle={onToggle} />
+                                <FlowNodeRenderer
+                                    node={failPath}
+                                    onToggle={onToggle}
+                                    onOpenAddModal={onOpenAddModal}
+                                    onRemoveCondition={onRemoveCondition}
+                                />
                             ) : (
-                                <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 text-center">
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-center">
                                     <div className="text-xs text-gray-400">全日程終了</div>
                                 </div>
                             )}
+                            {/* 不合格パスの末尾に＋ボタン */}
+                            <>
+                                <div className="w-0.5 h-3 bg-red-200" />
+                                <button
+                                    onClick={() => onOpenAddModal(selectionId, 'fail')}
+                                    className="py-1 px-2.5 border border-dashed border-red-200 rounded-lg text-[10px] text-red-300 hover:border-red-400 hover:text-red-500 transition-colors"
+                                >
+                                    + 追加
+                                </button>
+                            </>
                         </div>
                     </div>
                 </>
             ) : next ? (
                 <>
-                    {/* 次ノードへの縦線 */}
                     <div className="w-0.5 h-6 bg-gray-300" />
-                    <FlowNodeRenderer node={next} onToggle={onToggle} />
+                    <FlowNodeRenderer
+                        node={next}
+                        onToggle={onToggle}
+                        onOpenAddModal={onOpenAddModal}
+                        onRemoveCondition={onRemoveCondition}
+                    />
                 </>
             ) : null}
+        </div>
+    )
+}
+
+// ============================================================
+// 学校追加モーダル
+// ============================================================
+
+function AddBranchModal({
+    selections,
+    sourceId,
+    conditionType,
+    onSelect,
+    onClose,
+}: {
+    selections: UserExamSelection[]
+    sourceId: string
+    conditionType: 'pass' | 'fail'
+    onSelect: (examSessionId: string) => void
+    onClose: () => void
+}) {
+    // 表示する候補: 自分自身と、既にこのパスに割り当て済みの学校を除く
+    const alreadyOnThisPath = new Set(
+        selections
+            .filter(s => s.condition_source_id === sourceId && s.condition_type === conditionType)
+            .map(s => s.exam_session_id)
+    )
+    const sourceSelection = selections.find(s => s.id === sourceId)
+    const candidates = selections.filter(s =>
+        s.id !== sourceId &&
+        !alreadyOnThisPath.has(s.exam_session_id) &&
+        s.exam_session?.test_date
+    ).sort(sortByDateAndPeriod)
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={onClose}>
+            <div className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-4 border-b border-teal-100">
+                    <div>
+                        <h3 className="text-lg font-bold text-teal-700 flex items-center gap-2">
+                            {conditionType === 'pass' ? (
+                                <><CheckCircle className="w-5 h-5 text-green-500" />合格の場合</>
+                            ) : (
+                                <><XCircle className="w-5 h-5 text-red-500" />不合格の場合</>
+                            )}
+                        </h3>
+                        {sourceSelection && (
+                            <p className="text-xs text-teal-400 mt-0.5">
+                                {sourceSelection.exam_session?.school?.name} の結果に応じて受験する学校
+                            </p>
+                        )}
+                    </div>
+                    <button onClick={onClose} className="p-2 text-teal-300 hover:text-teal-500 rounded-lg">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                <div className="overflow-y-auto p-3 space-y-1.5">
+                    {candidates.length === 0 ? (
+                        <p className="text-teal-300 text-center py-8 text-sm">
+                            追加できる学校がありません。<br />「受験校リスト」タブで学校を選択してください。
+                        </p>
+                    ) : (
+                        candidates.map(sel => (
+                            <button
+                                key={sel.id}
+                                onClick={() => onSelect(sel.exam_session_id)}
+                                className="w-full text-left px-4 py-3 rounded-lg hover:bg-teal-50 active:bg-teal-100 transition-colors flex items-center gap-3"
+                            >
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
+                                    sel.exam_session?.time_period === '午後' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
+                                }`}>
+                                    {sel.exam_session?.test_date
+                                        ? `${new Date(sel.exam_session.test_date + 'T00:00:00').getMonth() + 1}/${new Date(sel.exam_session.test_date + 'T00:00:00').getDate()}`
+                                        : '?'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-semibold text-teal-700 text-sm truncate">{sel.exam_session?.school?.name}</div>
+                                    <div className="text-xs text-teal-400">
+                                        {sel.exam_session?.session_label} {sel.exam_session?.time_period}
+                                        {sel.exam_session?.sapix != null && ` · S${sel.exam_session.sapix}`}
+                                    </div>
+                                </div>
+                                <Plus className="w-5 h-5 text-teal-300 flex-shrink-0" />
+                            </button>
+                        ))
+                    )}
+                </div>
+            </div>
         </div>
     )
 }
