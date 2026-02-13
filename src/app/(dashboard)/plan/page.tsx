@@ -464,7 +464,7 @@ export default function PlanPage() {
                     {/* ===== SVG 矢印オーバーレイ ===== */}
                     <svg
                         className="absolute inset-0 pointer-events-none overflow-visible"
-                        style={{ zIndex: 15 }}
+                        style={{ zIndex: 10 }}
                     >
                         <defs>
                             <marker id="ah-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
@@ -559,7 +559,7 @@ function SchoolCard({
         <div
             ref={el => setRef(sel.id, el)}
             data-drop-sel-id={sel.id}
-            className={`relative rounded-lg p-2 pr-6 mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
+            className={`relative z-20 rounded-lg p-2 pr-6 mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
                 isDragTarget ? 'ring-2 ring-blue-400/60 border-blue-300' : 'border-gray-200'
             } ${incoming ? (incomingType === 'pass' ? 'border-l-[3px] border-l-green-400' : 'border-l-[3px] border-l-red-400') : ''}`}
         >
