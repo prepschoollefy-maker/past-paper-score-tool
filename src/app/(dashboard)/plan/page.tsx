@@ -94,6 +94,7 @@ export default function PlanPage() {
     const [loading, setLoading] = useState(true)
     const [modal, setModal] = useState<ModalState | null>(null)
     const [drag, setDrag] = useState<DragState | null>(null)
+    const [hoveredSelId, setHoveredSelId] = useState<string | null>(null)
     const supabase = createClient()
 
     const fetchData = useCallback(async () => {
@@ -120,11 +121,9 @@ export default function PlanPage() {
     }
 
     const handleRemove = async (id: string) => {
-        // 子接続を切断（子は残す）
         await supabase.from('user_exam_selections')
             .update({ condition_source_id: null, condition_type: null })
             .eq('condition_source_id', id)
-        // 本体を削除
         await supabase.from('user_exam_selections').delete().eq('id', id)
         fetchData()
     }
@@ -225,9 +224,26 @@ export default function PlanPage() {
             }))
     , [sels])
 
-    // ===== 矢印描画 =====
+    // ===== ホバー関連 =====
+    const hoveredConnIds = useMemo(() => {
+        if (!hoveredSelId) return new Set<string>()
+        const ids = new Set<string>([hoveredSelId])
+        for (const a of arrowConns) {
+            if (a.from === hoveredSelId || a.to === hoveredSelId) {
+                ids.add(a.from)
+                ids.add(a.to)
+            }
+        }
+        return ids
+    }, [hoveredSelId, arrowConns])
+
+    const visibleArrows = useMemo(() => {
+        if (!hoveredSelId) return []
+        return arrowConns.filter(a => a.from === hoveredSelId || a.to === hoveredSelId)
+    }, [hoveredSelId, arrowConns])
+
+    // ===== 矢印描画 (ホバー時のみ) =====
     const contentRef = useRef<HTMLDivElement>(null)
-    const gridRef = useRef<HTMLDivElement>(null)
     const cardRefs = useRef(new Map<string, HTMLDivElement>())
     const [svgArrows, setSvgArrows] = useState<{ id: string; d: string; type: 'pass' | 'fail' }[]>([])
 
@@ -241,17 +257,12 @@ export default function PlanPage() {
         if (!c) return
 
         const calc = () => {
-            if (arrowConns.length === 0) { setSvgArrows([]); return }
+            if (visibleArrows.length === 0) { setSvgArrows([]); return }
 
             const cr = c.getBoundingClientRect()
-            const g = gridRef.current
-            if (!g) return
-            const gridBottom = g.getBoundingClientRect().bottom - cr.top
-
             const paths: { id: string; d: string; type: 'pass' | 'fail' }[] = []
 
-            for (let i = 0; i < arrowConns.length; i++) {
-                const a = arrowConns[i]
+            for (const a of visibleArrows) {
                 const fe = cardRefs.current.get(a.from)
                 const te = cardRefs.current.get(a.to)
                 if (!fe || !te) continue
@@ -263,14 +274,12 @@ export default function PlanPage() {
                 const fy = fr.top + fr.height / 2 - cr.top
                 const tx = tr.left - cr.left - 4
                 const ty = tr.top + tr.height / 2 - cr.top
-
-                // ガター（グリッド下部の空きレーン）を通すルート
-                const gutterY = gridBottom + 20 + i * 14
-                const cpx = Math.max(Math.abs(tx - fx) * 0.3, 30)
+                const dx = Math.abs(tx - fx)
+                const cp = Math.max(dx * 0.35, 40)
 
                 paths.push({
                     id: a.id,
-                    d: `M${fx},${fy} C${fx + cpx},${gutterY} ${tx - cpx},${gutterY} ${tx},${ty}`,
+                    d: `M${fx},${fy} C${fx + cp},${fy} ${tx - cp},${ty} ${tx},${ty}`,
                     type: a.type,
                 })
             }
@@ -286,7 +295,7 @@ export default function PlanPage() {
             cancelAnimationFrame(raf)
             ro.disconnect()
         }
-    }, [arrowConns, sels])
+    }, [visibleArrows, sels])
 
     // ===== ドラッグ操作 =====
     const createConnectionRef = useRef(createConnection)
@@ -325,7 +334,6 @@ export default function PlanPage() {
         }
 
         const handleUp = (ev: PointerEvent) => {
-            // ドロップ先のカードを検出
             const elements = document.elementsFromPoint(ev.clientX, ev.clientY)
             for (const el of elements) {
                 if (el instanceof SVGElement) continue
@@ -382,9 +390,8 @@ export default function PlanPage() {
 
             {/* ===== グリッド ===== */}
             <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-200 bg-white">
-                <div ref={contentRef} className="min-w-fit relative" style={{ paddingBottom: arrowConns.length > 0 ? Math.max(60, 36 + arrowConns.length * 14) : 0 }}>
+                <div ref={contentRef} className="min-w-fit relative">
                     <div
-                        ref={gridRef}
                         style={{
                             display: 'grid',
                             gridTemplateColumns: `72px repeat(${allCols.length}, minmax(150px, 1fr))`,
@@ -449,6 +456,9 @@ export default function PlanPage() {
                                                     onDeleteConnection={deleteConnection}
                                                     onDragStart={startDrag}
                                                     isDragTarget={!!drag && drag.fromSelId !== sel.id}
+                                                    isHighlighted={hoveredConnIds.has(sel.id)}
+                                                    isDimmed={!!hoveredSelId && !hoveredConnIds.has(sel.id)}
+                                                    onHover={setHoveredSelId}
                                                     setRef={setCardRef}
                                                 />
                                             ))}
@@ -470,10 +480,10 @@ export default function PlanPage() {
                         ))}
                     </div>
 
-                    {/* ===== SVG 矢印オーバーレイ ===== */}
+                    {/* ===== SVG 矢印オーバーレイ (ホバー時のみ表示) ===== */}
                     <svg
                         className="absolute inset-0 pointer-events-none overflow-visible"
-                        style={{ zIndex: 15 }}
+                        style={{ zIndex: 30 }}
                     >
                         <defs>
                             <marker id="ah-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
@@ -484,18 +494,27 @@ export default function PlanPage() {
                             </marker>
                         </defs>
 
-                        {/* 確定矢印 */}
+                        {/* ホバー時の矢印 */}
                         {svgArrows.map(a => (
-                            <path
-                                key={a.id}
-                                d={a.d}
-                                fill="none"
-                                stroke={a.type === 'pass' ? '#22c55e' : '#ef4444'}
-                                strokeWidth={2.5}
-                                strokeDasharray={a.type === 'fail' ? '8 4' : 'none'}
-                                markerEnd={`url(#ah-${a.type === 'pass' ? 'green' : 'red'})`}
-                                opacity={0.75}
-                            />
+                            <g key={a.id}>
+                                {/* 白アウトライン (視認性向上) */}
+                                <path
+                                    d={a.d}
+                                    fill="none"
+                                    stroke="white"
+                                    strokeWidth={5}
+                                    strokeLinecap="round"
+                                />
+                                {/* カラー矢印 */}
+                                <path
+                                    d={a.d}
+                                    fill="none"
+                                    stroke={a.type === 'pass' ? '#22c55e' : '#ef4444'}
+                                    strokeWidth={2.5}
+                                    strokeDasharray={a.type === 'fail' ? '8 4' : 'none'}
+                                    markerEnd={`url(#ah-${a.type === 'pass' ? 'green' : 'red'})`}
+                                />
+                            </g>
                         ))}
 
                         {/* ドラッグ中の一時線 */}
@@ -514,6 +533,17 @@ export default function PlanPage() {
                     </svg>
                 </div>
             </div>
+
+            {/* ===== フロー概要パネル ===== */}
+            {arrowConns.length > 0 && (
+                <FlowSummaryPanel
+                    sels={sels}
+                    arrowConns={arrowConns}
+                    onDeleteConnection={deleteConnection}
+                    hoveredSelId={hoveredSelId}
+                    onHover={setHoveredSelId}
+                />
+            )}
 
             {/* ===== 検索モーダル ===== */}
             {modal && (
@@ -540,6 +570,9 @@ function SchoolCard({
     onDeleteConnection,
     onDragStart,
     isDragTarget,
+    isHighlighted,
+    isDimmed,
+    onHover,
     setRef,
 }: {
     sel: UserExamSelection
@@ -548,6 +581,9 @@ function SchoolCard({
     onDeleteConnection: (targetId: string) => void
     onDragStart: (selId: string, type: 'pass' | 'fail', e: React.PointerEvent) => void
     isDragTarget: boolean
+    isHighlighted: boolean
+    isDimmed: boolean
+    onHover: (selId: string | null) => void
     setRef: (id: string, el: HTMLDivElement | null) => void
 }) {
     const es = sel.exam_session!
@@ -568,19 +604,24 @@ function SchoolCard({
         <div
             ref={el => setRef(sel.id, el)}
             data-drop-sel-id={sel.id}
+            onMouseEnter={() => onHover(sel.id)}
+            onMouseLeave={() => onHover(null)}
             className={`relative rounded-lg p-2 pr-6 mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
-                isDragTarget ? 'ring-2 ring-blue-400/60 border-blue-300' : 'border-gray-200'
-            } ${incoming ? (incomingType === 'pass' ? 'border-l-[3px] border-l-green-400' : 'border-l-[3px] border-l-red-400') : ''}`}
+                isDragTarget ? 'ring-2 ring-blue-400/60 border-blue-300'
+                : isHighlighted ? 'ring-2 ring-teal-400/60 border-teal-300 shadow-md'
+                : 'border-gray-200'
+            } ${isDimmed ? 'opacity-40' : ''} ${
+                incoming ? (incomingType === 'pass' ? 'border-l-[3px] border-l-green-400' : 'border-l-[3px] border-l-red-400') : ''
+            }`}
+            style={{ zIndex: isHighlighted ? 25 : undefined }}
         >
             {/* ─── 接続ハンドル (右端) ─── */}
             <div className="absolute right-0 top-0 bottom-0 flex flex-col items-center justify-center gap-1.5 w-5 opacity-50 hover:opacity-100 transition-opacity">
-                {/* 合格ハンドル (緑) */}
                 <div
                     className="w-3.5 h-3.5 rounded-full bg-green-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
                     title="合格 (ドラッグで接続)"
                     onPointerDown={e => onDragStart(sel.id, 'pass', e)}
                 />
-                {/* 不合格ハンドル (赤) */}
                 <div
                     className="w-3.5 h-3.5 rounded-full bg-red-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
                     title="不合格 (ドラッグで接続)"
@@ -608,12 +649,10 @@ function SchoolCard({
 
             {/* ─── メインコンテンツ ─── */}
             <div className="flex items-start gap-1.5">
-                {/* 偏差値バッジ */}
                 <div className={`w-7 h-7 rounded flex items-center justify-center font-bold text-[11px] flex-shrink-0 ring-1 ring-inset ${rc.badge}`}>
                     {es.yotsuya_80 ?? '?'}
                 </div>
 
-                {/* 学校情報 */}
                 <div className="min-w-0 flex-1">
                     <div className="font-bold text-gray-800 truncate leading-tight text-[11px]">
                         {es.school?.name}
@@ -637,7 +676,6 @@ function SchoolCard({
                     </div>
                 </div>
 
-                {/* 削除ボタン */}
                 <button
                     onClick={() => onRemove(sel.id)}
                     className="w-5 h-5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors flex-shrink-0"
@@ -698,6 +736,109 @@ function SchoolCard({
                     ))}
                 </div>
             )}
+        </div>
+    )
+}
+
+// ============================================================
+// フロー概要パネル
+// ============================================================
+
+function FlowSummaryPanel({
+    sels,
+    arrowConns,
+    onDeleteConnection,
+    hoveredSelId,
+    onHover,
+}: {
+    sels: UserExamSelection[]
+    arrowConns: ArrowConn[]
+    onDeleteConnection: (targetId: string) => void
+    hoveredSelId: string | null
+    onHover: (selId: string | null) => void
+}) {
+    // 子マップ構築
+    const childMap = useMemo(() => {
+        const m = new Map<string, { sel: UserExamSelection; type: 'pass' | 'fail' }[]>()
+        for (const s of sels) {
+            if (s.condition_source_id && s.condition_type) {
+                if (!m.has(s.condition_source_id)) m.set(s.condition_source_id, [])
+                m.get(s.condition_source_id)!.push({ sel: s, type: s.condition_type as 'pass' | 'fail' })
+            }
+        }
+        return m
+    }, [sels])
+
+    // ルートノード (接続元がないが、接続先を持つ)
+    const roots = useMemo(() => {
+        return sels.filter(s => !s.condition_source_id && childMap.has(s.id))
+    }, [sels, childMap])
+
+    const renderNode = (sel: UserExamSelection, type: 'pass' | 'fail' | null, depth: number, visited: Set<string>): React.ReactNode[] => {
+        if (visited.has(sel.id)) return []
+        visited.add(sel.id)
+
+        const es = sel.exam_session
+        const children = childMap.get(sel.id) || []
+        const isHovered = hoveredSelId === sel.id
+        const lines: React.ReactNode[] = []
+
+        lines.push(
+            <div
+                key={sel.id}
+                className={`flex items-center gap-1.5 py-1 px-2 rounded-md transition-colors cursor-default ${
+                    isHovered ? 'bg-teal-50' : 'hover:bg-gray-50'
+                }`}
+                style={{ paddingLeft: 8 + depth * 24 }}
+                onMouseEnter={() => onHover(sel.id)}
+                onMouseLeave={() => onHover(null)}
+            >
+                {type === 'pass' && (
+                    <span className="text-green-500 font-bold text-xs flex-shrink-0">○→</span>
+                )}
+                {type === 'fail' && (
+                    <span className="text-red-400 font-bold text-xs flex-shrink-0">×→</span>
+                )}
+                {!type && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0" />
+                )}
+                <span className="text-xs font-semibold text-gray-700">{es?.school?.name}</span>
+                <span className="text-[10px] text-gray-400">{es?.session_label}</span>
+                {es?.test_date && (
+                    <span className="text-[10px] text-gray-300">{fmtDate(es.test_date)}</span>
+                )}
+                {type && (
+                    <button
+                        onClick={() => onDeleteConnection(sel.id)}
+                        className="ml-auto flex-shrink-0 w-4 h-4 rounded hover:bg-gray-200 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
+                        title="接続を削除"
+                    >
+                        <X className="w-3 h-3" />
+                    </button>
+                )}
+            </div>
+        )
+
+        // pass を先に、fail を後に
+        const sorted = [...children].sort((a, b) => (a.type === 'pass' ? -1 : 1) - (b.type === 'pass' ? -1 : 1))
+        for (const c of sorted) {
+            lines.push(...renderNode(c.sel, c.type, depth + 1, visited))
+        }
+
+        return lines
+    }
+
+    const visited = new Set<string>()
+
+    return (
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="px-4 py-2.5 border-b border-gray-100">
+                <h3 className="text-xs font-bold text-gray-500">フロー概要</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">グリッド上のカードにホバーすると矢印が表示されます</p>
+            </div>
+            <div className="py-2">
+                {roots.map(r => renderNode(r, null, 0, visited))}
+            </div>
         </div>
     )
 }
