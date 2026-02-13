@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { ExamSession, UserExamSelection } from '@/types/database'
-import { Search, Plus, X, Clock } from 'lucide-react'
+import { Search, Plus, X, Clock, Printer } from 'lucide-react'
 
 // ============================================================
 // 定数 & ユーティリティ
@@ -95,6 +95,7 @@ export default function PlanPage() {
     const [modal, setModal] = useState<ModalState | null>(null)
     const [drag, setDrag] = useState<DragState | null>(null)
     const [hoveredSelId, setHoveredSelId] = useState<string | null>(null)
+    const [printMode, setPrintMode] = useState(false)
     const supabase = createClient()
 
     const fetchData = useCallback(async () => {
@@ -238,9 +239,10 @@ export default function PlanPage() {
     }, [hoveredSelId, arrowConns])
 
     const visibleArrows = useMemo(() => {
+        if (printMode) return arrowConns
         if (!hoveredSelId) return []
         return arrowConns.filter(a => a.from === hoveredSelId || a.to === hoveredSelId)
-    }, [hoveredSelId, arrowConns])
+    }, [hoveredSelId, arrowConns, printMode])
 
     // ===== 矢印描画 (ホバー時のみ) =====
     const contentRef = useRef<HTMLDivElement>(null)
@@ -365,20 +367,37 @@ export default function PlanPage() {
 
     return (
         <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-teal-700">併願パターン</h1>
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-teal-700">併願パターン</h1>
+                {arrowConns.length > 0 && (
+                    <button
+                        onClick={() => setPrintMode(p => !p)}
+                        className={`print:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            printMode
+                                ? 'bg-teal-600 text-white hover:bg-teal-700'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                    >
+                        <Printer className="w-3.5 h-3.5" />
+                        {printMode ? '編集モードに戻る' : '印刷モード'}
+                    </button>
+                )}
+            </div>
 
             {/* グローバル検索 */}
-            <button
-                onClick={() => setModal({ mode: 'global' })}
-                className="w-full flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-teal-300 rounded-xl text-teal-500 hover:border-teal-400 hover:text-teal-600 hover:bg-teal-50/30 transition-colors"
-            >
-                <Search className="w-5 h-5" />
-                <span className="text-sm">学校を検索して追加...</span>
-            </button>
+            {!printMode && (
+                <button
+                    onClick={() => setModal({ mode: 'global' })}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-white border-2 border-dashed border-teal-300 rounded-xl text-teal-500 hover:border-teal-400 hover:text-teal-600 hover:bg-teal-50/30 transition-colors print:hidden"
+                >
+                    <Search className="w-5 h-5" />
+                    <span className="text-sm">学校を検索して追加...</span>
+                </button>
+            )}
 
             {/* ヒント */}
-            {showHint && (
-                <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-600">
+            {showHint && !printMode && (
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-600 print:hidden">
                     <span>
                         カード右端の
                         <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-400 mx-0.5 align-middle" />
@@ -456,23 +475,26 @@ export default function PlanPage() {
                                                     onDeleteConnection={deleteConnection}
                                                     onDragStart={startDrag}
                                                     isDragTarget={!!drag && drag.fromSelId !== sel.id}
-                                                    isHighlighted={hoveredConnIds.has(sel.id)}
-                                                    isDimmed={!!hoveredSelId && !hoveredConnIds.has(sel.id)}
+                                                    isHighlighted={!printMode && hoveredConnIds.has(sel.id)}
+                                                    isDimmed={!printMode && !!hoveredSelId && !hoveredConnIds.has(sel.id)}
                                                     onHover={setHoveredSelId}
                                                     setRef={setCardRef}
+                                                    printMode={printMode}
                                                 />
                                             ))}
 
-                                            <button
-                                                onClick={() => setModal({
-                                                    mode: 'date',
-                                                    dateFilter: col.date,
-                                                    periodFilter: col.period,
-                                                })}
-                                                className="w-full mt-0.5 py-1 border border-dashed border-transparent rounded text-gray-300 opacity-0 group-hover:opacity-100 group-hover:border-gray-300 hover:!border-teal-400 hover:!text-teal-500 hover:!bg-teal-50/30 transition-all flex items-center justify-center"
-                                            >
-                                                <Plus className="w-3 h-3" />
-                                            </button>
+                                            {!printMode && (
+                                                <button
+                                                    onClick={() => setModal({
+                                                        mode: 'date',
+                                                        dateFilter: col.date,
+                                                        periodFilter: col.period,
+                                                    })}
+                                                    className="w-full mt-0.5 py-1 border border-dashed border-transparent rounded text-gray-300 opacity-0 group-hover:opacity-100 group-hover:border-gray-300 hover:!border-teal-400 hover:!text-teal-500 hover:!bg-teal-50/30 transition-all flex items-center justify-center print:hidden"
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                </button>
+                                            )}
                                         </div>
                                     )
                                 })}
@@ -542,6 +564,7 @@ export default function PlanPage() {
                     onDeleteConnection={deleteConnection}
                     hoveredSelId={hoveredSelId}
                     onHover={setHoveredSelId}
+                    printMode={printMode}
                 />
             )}
 
@@ -574,6 +597,7 @@ function SchoolCard({
     isDimmed,
     onHover,
     setRef,
+    printMode,
 }: {
     sel: UserExamSelection
     allSels: UserExamSelection[]
@@ -585,6 +609,7 @@ function SchoolCard({
     isDimmed: boolean
     onHover: (selId: string | null) => void
     setRef: (id: string, el: HTMLDivElement | null) => void
+    printMode: boolean
 }) {
     const es = sel.exam_session!
     const rc = rangeCfg(rangeOf(es.yotsuya_80))
@@ -606,7 +631,7 @@ function SchoolCard({
             data-drop-sel-id={sel.id}
             onMouseEnter={() => onHover(sel.id)}
             onMouseLeave={() => onHover(null)}
-            className={`relative rounded-lg p-2 pr-6 mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
+            className={`relative rounded-lg p-2 ${printMode ? '' : 'pr-6'} mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
                 isDragTarget ? 'ring-2 ring-blue-400/60 border-blue-300'
                 : isHighlighted ? 'ring-2 ring-teal-400/60 border-teal-300 shadow-md'
                 : 'border-gray-200'
@@ -616,18 +641,20 @@ function SchoolCard({
             style={{ zIndex: isHighlighted ? 25 : undefined }}
         >
             {/* ─── 接続ハンドル (右端) ─── */}
-            <div className="absolute right-0 top-0 bottom-0 flex flex-col items-center justify-center gap-1.5 w-5 opacity-50 hover:opacity-100 transition-opacity">
-                <div
-                    className="w-3.5 h-3.5 rounded-full bg-green-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
-                    title="合格 (ドラッグで接続)"
-                    onPointerDown={e => onDragStart(sel.id, 'pass', e)}
-                />
-                <div
-                    className="w-3.5 h-3.5 rounded-full bg-red-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
-                    title="不合格 (ドラッグで接続)"
-                    onPointerDown={e => onDragStart(sel.id, 'fail', e)}
-                />
-            </div>
+            {!printMode && (
+                <div className="absolute right-0 top-0 bottom-0 flex flex-col items-center justify-center gap-1.5 w-5 opacity-50 hover:opacity-100 transition-opacity print:hidden">
+                    <div
+                        className="w-3.5 h-3.5 rounded-full bg-green-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
+                        title="合格 (ドラッグで接続)"
+                        onPointerDown={e => onDragStart(sel.id, 'pass', e)}
+                    />
+                    <div
+                        className="w-3.5 h-3.5 rounded-full bg-red-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
+                        title="不合格 (ドラッグで接続)"
+                        onPointerDown={e => onDragStart(sel.id, 'fail', e)}
+                    />
+                </div>
+            )}
 
             {/* ─── 受信接続ラベル ─── */}
             {incoming && (
@@ -637,13 +664,15 @@ function SchoolCard({
                     <span className="flex-shrink-0">{incomingType === 'pass' ? '○' : 'x'}</span>
                     <span className="truncate">{incoming.exam_session?.school?.name}</span>
                     <span className="flex-shrink-0">{incomingType === 'pass' ? '合格時' : '不合格時'}</span>
-                    <button
-                        onClick={() => onDeleteConnection(sel.id)}
-                        className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500"
-                        title="接続を削除"
-                    >
-                        <X className="w-2.5 h-2.5" />
-                    </button>
+                    {!printMode && (
+                        <button
+                            onClick={() => onDeleteConnection(sel.id)}
+                            className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500 print:hidden"
+                            title="接続を削除"
+                        >
+                            <X className="w-2.5 h-2.5" />
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -676,13 +705,15 @@ function SchoolCard({
                     </div>
                 </div>
 
-                <button
-                    onClick={() => onRemove(sel.id)}
-                    className="w-5 h-5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors flex-shrink-0"
-                    title="削除"
-                >
-                    <X className="w-3 h-3" />
-                </button>
+                {!printMode && (
+                    <button
+                        onClick={() => onRemove(sel.id)}
+                        className="w-5 h-5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors flex-shrink-0 print:hidden"
+                        title="削除"
+                    >
+                        <X className="w-3 h-3" />
+                    </button>
+                )}
             </div>
 
             {/* ─── 時間情報 ─── */}
@@ -712,26 +743,30 @@ function SchoolCard({
                         <div key={t.id} className="flex items-center gap-0.5 text-[9px] text-green-600">
                             <span className="flex-shrink-0 font-medium">○→</span>
                             <span className="truncate">{t.exam_session?.school?.name}</span>
-                            <button
-                                onClick={() => onDeleteConnection(t.id)}
-                                className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500"
-                                title="接続を削除"
-                            >
-                                <X className="w-2.5 h-2.5" />
-                            </button>
+                            {!printMode && (
+                                <button
+                                    onClick={() => onDeleteConnection(t.id)}
+                                    className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500 print:hidden"
+                                    title="接続を削除"
+                                >
+                                    <X className="w-2.5 h-2.5" />
+                                </button>
+                            )}
                         </div>
                     ))}
                     {failTargets.map(t => (
                         <div key={t.id} className="flex items-center gap-0.5 text-[9px] text-red-500">
                             <span className="flex-shrink-0 font-medium">x→</span>
                             <span className="truncate">{t.exam_session?.school?.name}</span>
-                            <button
-                                onClick={() => onDeleteConnection(t.id)}
-                                className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500"
-                                title="接続を削除"
-                            >
-                                <X className="w-2.5 h-2.5" />
-                            </button>
+                            {!printMode && (
+                                <button
+                                    onClick={() => onDeleteConnection(t.id)}
+                                    className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500 print:hidden"
+                                    title="接続を削除"
+                                >
+                                    <X className="w-2.5 h-2.5" />
+                                </button>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -750,12 +785,14 @@ function FlowSummaryPanel({
     onDeleteConnection,
     hoveredSelId,
     onHover,
+    printMode,
 }: {
     sels: UserExamSelection[]
     arrowConns: ArrowConn[]
     onDeleteConnection: (targetId: string) => void
     hoveredSelId: string | null
     onHover: (selId: string | null) => void
+    printMode: boolean
 }) {
     // 子マップ構築
     const childMap = useMemo(() => {
@@ -807,10 +844,10 @@ function FlowSummaryPanel({
                 {es?.test_date && (
                     <span className="text-[10px] text-gray-300">{fmtDate(es.test_date)}</span>
                 )}
-                {type && (
+                {type && !printMode && (
                     <button
                         onClick={() => onDeleteConnection(sel.id)}
-                        className="ml-auto flex-shrink-0 w-4 h-4 rounded hover:bg-gray-200 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
+                        className="ml-auto flex-shrink-0 w-4 h-4 rounded hover:bg-gray-200 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors print:hidden"
                         title="接続を削除"
                     >
                         <X className="w-3 h-3" />
@@ -834,7 +871,7 @@ function FlowSummaryPanel({
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
             <div className="px-4 py-2.5 border-b border-gray-100">
                 <h3 className="text-xs font-bold text-gray-500">フロー概要</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">グリッド上のカードにホバーすると矢印が表示されます</p>
+                {!printMode && <p className="text-[10px] text-gray-400 mt-0.5 print:hidden">グリッド上のカードにホバーすると矢印が表示されます</p>}
             </div>
             <div className="py-2">
                 {roots.map(r => renderNode(r, null, 0, visited))}
