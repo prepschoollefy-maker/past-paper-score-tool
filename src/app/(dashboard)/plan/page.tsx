@@ -277,14 +277,11 @@ export default function PlanPage() {
                 const tx = tr.left - cr.left - 4
                 const ty = tr.top + tr.height / 2 - cr.top
                 const dx = Math.abs(tx - fx)
-                const cp = Math.max(dx * 0.4, 50)
-
-                // 隣接列で距離が近い場合、上にアーチさせて視認性を確保
-                const arc = dx < 180 ? -(180 - dx) * 0.5 : 0
+                const cp = Math.max(dx * 0.35, 40)
 
                 paths.push({
                     id: a.id,
-                    d: `M${fx},${fy} C${fx + cp},${fy + arc} ${tx - cp},${ty + arc} ${tx},${ty}`,
+                    d: `M${fx},${fy} C${fx + cp},${fy} ${tx - cp},${ty} ${tx},${ty}`,
                     type: a.type,
                 })
             }
@@ -416,7 +413,7 @@ export default function PlanPage() {
                     <div
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: `72px repeat(${allCols.length}, minmax(150px, 1fr))`,
+                            gridTemplateColumns: `72px repeat(${allCols.length}, minmax(240px, 1fr))`,
                         }}
                     >
                         {/* ─── ヘッダー行1: 日付グループ ─── */}
