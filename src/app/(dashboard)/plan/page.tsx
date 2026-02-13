@@ -227,6 +227,7 @@ export default function PlanPage() {
 
     // ===== 矢印描画 =====
     const contentRef = useRef<HTMLDivElement>(null)
+    const gridRef = useRef<HTMLDivElement>(null)
     const cardRefs = useRef(new Map<string, HTMLDivElement>())
     const [svgArrows, setSvgArrows] = useState<{ id: string; d: string; type: 'pass' | 'fail' }[]>([])
 
@@ -243,9 +244,14 @@ export default function PlanPage() {
             if (arrowConns.length === 0) { setSvgArrows([]); return }
 
             const cr = c.getBoundingClientRect()
+            const g = gridRef.current
+            if (!g) return
+            const gridBottom = g.getBoundingClientRect().bottom - cr.top
+
             const paths: { id: string; d: string; type: 'pass' | 'fail' }[] = []
 
-            for (const a of arrowConns) {
+            for (let i = 0; i < arrowConns.length; i++) {
+                const a = arrowConns[i]
                 const fe = cardRefs.current.get(a.from)
                 const te = cardRefs.current.get(a.to)
                 if (!fe || !te) continue
@@ -257,12 +263,14 @@ export default function PlanPage() {
                 const fy = fr.top + fr.height / 2 - cr.top
                 const tx = tr.left - cr.left - 4
                 const ty = tr.top + tr.height / 2 - cr.top
-                const dx = Math.abs(tx - fx)
-                const cp = Math.max(dx * 0.35, 40)
+
+                // ガター（グリッド下部の空きレーン）を通すルート
+                const gutterY = gridBottom + 20 + i * 14
+                const cpx = Math.max(Math.abs(tx - fx) * 0.3, 30)
 
                 paths.push({
                     id: a.id,
-                    d: `M${fx},${fy} C${fx + cp},${fy} ${tx - cp},${ty} ${tx},${ty}`,
+                    d: `M${fx},${fy} C${fx + cpx},${gutterY} ${tx - cpx},${gutterY} ${tx},${ty}`,
                     type: a.type,
                 })
             }
@@ -374,8 +382,9 @@ export default function PlanPage() {
 
             {/* ===== グリッド ===== */}
             <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-200 bg-white">
-                <div ref={contentRef} className="min-w-fit relative">
+                <div ref={contentRef} className="min-w-fit relative" style={{ paddingBottom: arrowConns.length > 0 ? Math.max(60, 36 + arrowConns.length * 14) : 0 }}>
                     <div
+                        ref={gridRef}
                         style={{
                             display: 'grid',
                             gridTemplateColumns: `72px repeat(${allCols.length}, minmax(150px, 1fr))`,
@@ -464,7 +473,7 @@ export default function PlanPage() {
                     {/* ===== SVG 矢印オーバーレイ ===== */}
                     <svg
                         className="absolute inset-0 pointer-events-none overflow-visible"
-                        style={{ zIndex: 10 }}
+                        style={{ zIndex: 15 }}
                     >
                         <defs>
                             <marker id="ah-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
@@ -559,7 +568,7 @@ function SchoolCard({
         <div
             ref={el => setRef(sel.id, el)}
             data-drop-sel-id={sel.id}
-            className={`relative z-20 rounded-lg p-2 pr-6 mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
+            className={`relative rounded-lg p-2 pr-6 mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
                 isDragTarget ? 'ring-2 ring-blue-400/60 border-blue-300' : 'border-gray-200'
             } ${incoming ? (incomingType === 'pass' ? 'border-l-[3px] border-l-green-400' : 'border-l-[3px] border-l-red-400') : ''}`}
         >
