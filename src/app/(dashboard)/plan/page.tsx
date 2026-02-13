@@ -413,38 +413,47 @@ export default function PlanPage() {
                     <div
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: `72px repeat(${allCols.length}, minmax(240px, 1fr))`,
+                            gridTemplateColumns: `72px ${dateGroups.map((g, i) =>
+                                `${i > 0 ? '20px ' : ''}repeat(${g.cols.length}, minmax(240px, 1fr))`
+                            ).join(' ')}`,
                         }}
                     >
                         {/* ─── ヘッダー行1: 日付グループ ─── */}
                         <div className="bg-gray-100 border-b border-r border-gray-200" />
-                        {dateGroups.map(g => (
-                            <div
-                                key={`dg-${g.date}`}
-                                className={`border-b border-r border-gray-200 px-2 py-2.5 text-center font-bold text-sm ${
-                                    g.isJan ? 'bg-amber-50 text-amber-700' : 'bg-teal-600 text-white'
-                                }`}
-                                style={{ gridColumn: `span ${g.cols.length}` }}
-                            >
-                                {g.label}
-                            </div>
+                        {dateGroups.map((g, i) => (
+                            <Fragment key={`dg-${g.date}`}>
+                                {i > 0 && <div className="bg-gray-50 border-b border-gray-200" />}
+                                <div
+                                    className={`border-b border-r border-gray-200 px-2 py-2.5 text-center font-bold text-sm ${
+                                        g.isJan ? 'bg-amber-50 text-amber-700' : 'bg-teal-600 text-white'
+                                    }`}
+                                    style={{ gridColumn: `span ${g.cols.length}` }}
+                                >
+                                    {g.label}
+                                </div>
+                            </Fragment>
                         ))}
 
                         {/* ─── ヘッダー行2: 偏差値ラベル + 午前/午後 ─── */}
                         <div className="bg-gray-100 border-b-2 border-r border-gray-300 px-1 py-1.5 flex items-center justify-center sticky left-0 z-20">
                             <span className="text-[10px] font-bold text-gray-400">偏差値</span>
                         </div>
-                        {allCols.map(col => (
-                            <div
-                                key={`ph-${col.key}`}
-                                className={`border-b-2 border-r border-gray-300 px-1 py-1.5 text-center text-xs font-semibold ${
-                                    col.period === '午後'
-                                        ? 'bg-indigo-50 text-indigo-600'
-                                        : 'bg-gray-50 text-gray-500'
-                                }`}
-                            >
-                                {col.period}
-                            </div>
+                        {dateGroups.map((g, i) => (
+                            <Fragment key={`ph-grp-${g.date}`}>
+                                {i > 0 && <div className="bg-gray-50 border-b-2 border-gray-300" />}
+                                {g.cols.map(col => (
+                                    <div
+                                        key={`ph-${col.key}`}
+                                        className={`border-b-2 border-r border-gray-300 px-1 py-1.5 text-center text-xs font-semibold ${
+                                            col.period === '午後'
+                                                ? 'bg-indigo-50 text-indigo-600'
+                                                : 'bg-gray-50 text-gray-500'
+                                        }`}
+                                    >
+                                        {col.period}
+                                    </div>
+                                ))}
+                            </Fragment>
                         ))}
 
                         {/* ─── データ行 (偏差値帯ごと) ─── */}
@@ -457,47 +466,52 @@ export default function PlanPage() {
                                     </span>
                                 </div>
 
-                                {/* セル */}
-                                {allCols.map(col => {
-                                    const cells = grid.get(range.key)?.get(col.key) || []
+                                {/* セル (日付グループ間にスペーサー) */}
+                                {dateGroups.map((g, gi) => (
+                                    <Fragment key={`${range.key}-g-${g.date}`}>
+                                        {gi > 0 && <div className="border-b border-gray-100 bg-white/60" />}
+                                        {g.cols.map(col => {
+                                            const cells = grid.get(range.key)?.get(col.key) || []
 
-                                    return (
-                                        <div
-                                            key={`${range.key}-${col.key}`}
-                                            className={`${range.bg} border-b border-r border-gray-100 p-1 min-h-[110px] group`}
-                                        >
-                                            {cells.map(sel => (
-                                                <SchoolCard
-                                                    key={sel.id}
-                                                    sel={sel}
-                                                    allSels={sels}
-                                                    onRemove={handleRemove}
-                                                    onDeleteConnection={deleteConnection}
-                                                    onDragStart={startDrag}
-                                                    isDragTarget={!!drag && drag.fromSelId !== sel.id}
-                                                    isHighlighted={!printMode && hoveredConnIds.has(sel.id)}
-                                                    isDimmed={!printMode && !!hoveredSelId && !hoveredConnIds.has(sel.id)}
-                                                    onHover={setHoveredSelId}
-                                                    setRef={setCardRef}
-                                                    printMode={printMode}
-                                                />
-                                            ))}
-
-                                            {!printMode && (
-                                                <button
-                                                    onClick={() => setModal({
-                                                        mode: 'date',
-                                                        dateFilter: col.date,
-                                                        periodFilter: col.period,
-                                                    })}
-                                                    className="w-full mt-0.5 py-1 border border-dashed border-transparent rounded text-gray-300 opacity-0 group-hover:opacity-100 group-hover:border-gray-300 hover:!border-teal-400 hover:!text-teal-500 hover:!bg-teal-50/30 transition-all flex items-center justify-center print:hidden"
+                                            return (
+                                                <div
+                                                    key={`${range.key}-${col.key}`}
+                                                    className={`${range.bg} border-b border-r border-gray-100 p-1 min-h-[110px] group`}
                                                 >
-                                                    <Plus className="w-3 h-3" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    )
-                                })}
+                                                    {cells.map(sel => (
+                                                        <SchoolCard
+                                                            key={sel.id}
+                                                            sel={sel}
+                                                            allSels={sels}
+                                                            onRemove={handleRemove}
+                                                            onDeleteConnection={deleteConnection}
+                                                            onDragStart={startDrag}
+                                                            isDragTarget={!!drag && drag.fromSelId !== sel.id}
+                                                            isHighlighted={!printMode && hoveredConnIds.has(sel.id)}
+                                                            isDimmed={!printMode && !!hoveredSelId && !hoveredConnIds.has(sel.id)}
+                                                            onHover={setHoveredSelId}
+                                                            setRef={setCardRef}
+                                                            printMode={printMode}
+                                                        />
+                                                    ))}
+
+                                                    {!printMode && (
+                                                        <button
+                                                            onClick={() => setModal({
+                                                                mode: 'date',
+                                                                dateFilter: col.date,
+                                                                periodFilter: col.period,
+                                                            })}
+                                                            className="w-full mt-0.5 py-1 border border-dashed border-transparent rounded text-gray-300 opacity-0 group-hover:opacity-100 group-hover:border-gray-300 hover:!border-teal-400 hover:!text-teal-500 hover:!bg-teal-50/30 transition-all flex items-center justify-center print:hidden"
+                                                        >
+                                                            <Plus className="w-3 h-3" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </Fragment>
+                                ))}
                             </Fragment>
                         ))}
                     </div>
