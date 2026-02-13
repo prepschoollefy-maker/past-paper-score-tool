@@ -3,9 +3,7 @@
 import { Fragment, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { ExamSession, UserExamSelection } from '@/types/database'
-import {
-    Search, Plus, X, GitBranch, CheckCircle, XCircle, Clock
-} from 'lucide-react'
+import { Search, Plus, X, Clock } from 'lucide-react'
 
 // ============================================================
 // 定数 & ユーティリティ
@@ -65,11 +63,25 @@ interface TimeCol { key: string; date: string; period: '午前' | '午後' }
 interface DateGrp { date: string; label: string; cols: TimeCol[]; isJan: boolean }
 
 type ModalState = {
-    mode: 'global' | 'date' | 'branch'
+    mode: 'global' | 'date'
     dateFilter?: string
     periodFilter?: '午前' | '午後'
-    sourceId?: string
-    conditionType?: 'pass' | 'fail'
+}
+
+interface DragState {
+    fromSelId: string
+    type: 'pass' | 'fail'
+    startX: number
+    startY: number
+    curX: number
+    curY: number
+}
+
+interface ArrowConn {
+    id: string
+    from: string
+    to: string
+    type: 'pass' | 'fail'
 }
 
 // ============================================================
@@ -81,6 +93,7 @@ export default function PlanPage() {
     const [sels, setSels] = useState<UserExamSelection[]>([])
     const [loading, setLoading] = useState(true)
     const [modal, setModal] = useState<ModalState | null>(null)
+    const [drag, setDrag] = useState<DragState | null>(null)
     const supabase = createClient()
 
     const fetchData = useCallback(async () => {
@@ -95,15 +108,8 @@ export default function PlanPage() {
 
     useEffect(() => { fetchData() }, [fetchData])
 
-    // ===== 再帰削除 =====
-    const delRec = useCallback(async (id: string, all: UserExamSelection[]) => {
-        for (const c of all.filter(s => s.condition_source_id === id)) {
-            await delRec(c.id, all)
-        }
-        await supabase.from('user_exam_selections').delete().eq('id', id)
-    }, [supabase])
+    // ===== データ操作 =====
 
-    // ===== CRUD =====
     const addSchool = async (esId: string) => {
         if (sels.find(s => s.exam_session_id === esId)) return
         const { data: { user } } = await supabase.auth.getUser()
@@ -113,41 +119,27 @@ export default function PlanPage() {
         setModal(null)
     }
 
-    const addBranch = async (esId: string, srcId: string, ct: 'pass' | 'fail') => {
-        const existing = sels.find(s => s.exam_session_id === esId)
-        if (existing) {
-            await supabase.from('user_exam_selections')
-                .update({ condition_source_id: srcId, condition_type: ct })
-                .eq('id', existing.id)
-        } else {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-            await supabase.from('user_exam_selections').insert({
-                user_id: user.id,
-                exam_session_id: esId,
-                condition_source_id: srcId,
-                condition_type: ct,
-            })
-        }
-        fetchData()
-        setModal(null)
-    }
-
     const handleRemove = async (id: string) => {
-        await delRec(id, sels)
+        // 子接続を切断（子は残す）
+        await supabase.from('user_exam_selections')
+            .update({ condition_source_id: null, condition_type: null })
+            .eq('condition_source_id', id)
+        // 本体を削除
+        await supabase.from('user_exam_selections').delete().eq('id', id)
         fetchData()
     }
 
-    const toggleBranch = async (id: string, cur: string) => {
-        const next = cur === 'end' ? 'continue' : 'end'
-        if (next === 'continue') {
-            for (const c of sels.filter(s => s.condition_source_id === id)) {
-                await delRec(c.id, sels)
-            }
-        }
+    const createConnection = async (fromSelId: string, toSelId: string, type: 'pass' | 'fail') => {
         await supabase.from('user_exam_selections')
-            .update({ on_pass_action: next })
-            .eq('id', id)
+            .update({ condition_source_id: fromSelId, condition_type: type })
+            .eq('id', toSelId)
+        fetchData()
+    }
+
+    const deleteConnection = async (targetSelId: string) => {
+        await supabase.from('user_exam_selections')
+            .update({ condition_source_id: null, condition_type: null })
+            .eq('id', targetSelId)
         fetchData()
     }
 
@@ -163,7 +155,6 @@ export default function PlanPage() {
     const { dateGroups, allCols } = useMemo(() => {
         const ds = new Set<string>()
 
-        // 1月: exam_sessionsに存在する日付のみ
         for (const s of sessions) {
             if (s.test_date) {
                 const d = new Date(s.test_date + 'T00:00:00')
@@ -171,10 +162,8 @@ export default function PlanPage() {
             }
         }
 
-        // 2月1-5日は固定
         for (let d = 1; d <= 5; d++) ds.add(`${yr}-02-0${d}`)
 
-        // 2/6以降: exam_sessionsまたは選択に存在すれば追加
         for (const s of sessions) {
             if (s.test_date && s.test_date > `${yr}-02-05`) ds.add(s.test_date)
         }
@@ -190,7 +179,6 @@ export default function PlanPage() {
             const d = new Date(date + 'T00:00:00')
             const isJan = d.getMonth() === 0
 
-            // この日に午後の試験があるか
             const hasPM = sessions.some(s => s.test_date === date && s.time_period === '午後') ||
                           sels.some(s => s.exam_session?.test_date === date && s.exam_session?.time_period === '午後')
 
@@ -225,17 +213,22 @@ export default function PlanPage() {
         return m
     }, [sels])
 
-    // ===== 矢印データ =====
-    const arrowConns = useMemo(() =>
+    // ===== 矢印データ (pass + fail) =====
+    const arrowConns: ArrowConn[] = useMemo(() =>
         sels
-            .filter(s => s.condition_source_id && s.condition_type === 'fail')
-            .map(s => ({ id: `a-${s.condition_source_id}-${s.id}`, from: s.condition_source_id!, to: s.id }))
+            .filter(s => s.condition_source_id && s.condition_type)
+            .map(s => ({
+                id: `a-${s.condition_source_id}-${s.id}`,
+                from: s.condition_source_id!,
+                to: s.id,
+                type: s.condition_type as 'pass' | 'fail',
+            }))
     , [sels])
 
     // ===== 矢印描画 =====
     const contentRef = useRef<HTMLDivElement>(null)
     const cardRefs = useRef(new Map<string, HTMLDivElement>())
-    const [svgArrows, setSvgArrows] = useState<{ id: string; d: string }[]>([])
+    const [svgArrows, setSvgArrows] = useState<{ id: string; d: string; type: 'pass' | 'fail' }[]>([])
 
     const setCardRef = useCallback((id: string, el: HTMLDivElement | null) => {
         if (el) cardRefs.current.set(id, el)
@@ -250,7 +243,7 @@ export default function PlanPage() {
             if (arrowConns.length === 0) { setSvgArrows([]); return }
 
             const cr = c.getBoundingClientRect()
-            const paths: { id: string; d: string }[] = []
+            const paths: { id: string; d: string; type: 'pass' | 'fail' }[] = []
 
             for (const a of arrowConns) {
                 const fe = cardRefs.current.get(a.from)
@@ -270,6 +263,7 @@ export default function PlanPage() {
                 paths.push({
                     id: a.id,
                     d: `M${fx},${fy} C${fx + cp},${fy} ${tx - cp},${ty} ${tx},${ty}`,
+                    type: a.type,
                 })
             }
 
@@ -277,7 +271,6 @@ export default function PlanPage() {
         }
 
         const raf = requestAnimationFrame(calc)
-
         const ro = new ResizeObserver(() => requestAnimationFrame(calc))
         ro.observe(c)
 
@@ -286,6 +279,71 @@ export default function PlanPage() {
             ro.disconnect()
         }
     }, [arrowConns, sels])
+
+    // ===== ドラッグ操作 =====
+    const createConnectionRef = useRef(createConnection)
+    createConnectionRef.current = createConnection
+
+    const startDrag = useCallback((selId: string, type: 'pass' | 'fail', e: React.PointerEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const c = contentRef.current
+        if (!c) return
+
+        const cr = c.getBoundingClientRect()
+        const hr = (e.currentTarget as HTMLElement).getBoundingClientRect()
+
+        const initialDrag: DragState = {
+            fromSelId: selId,
+            type,
+            startX: hr.left + hr.width / 2 - cr.left,
+            startY: hr.top + hr.height / 2 - cr.top,
+            curX: e.clientX - cr.left,
+            curY: e.clientY - cr.top,
+        }
+        setDrag(initialDrag)
+
+        document.body.style.cursor = 'grabbing'
+        document.body.style.userSelect = 'none'
+
+        const handleMove = (ev: PointerEvent) => {
+            const cr2 = contentRef.current?.getBoundingClientRect()
+            if (!cr2) return
+            setDrag(prev => prev ? {
+                ...prev,
+                curX: ev.clientX - cr2.left,
+                curY: ev.clientY - cr2.top,
+            } : null)
+        }
+
+        const handleUp = (ev: PointerEvent) => {
+            // ドロップ先のカードを検出
+            const elements = document.elementsFromPoint(ev.clientX, ev.clientY)
+            for (const el of elements) {
+                if (el instanceof SVGElement) continue
+                const card = (el as HTMLElement).closest?.('[data-drop-sel-id]')
+                if (card) {
+                    const targetId = card.getAttribute('data-drop-sel-id')!
+                    if (targetId !== selId) {
+                        createConnectionRef.current(selId, targetId, type)
+                        break
+                    }
+                }
+            }
+
+            setDrag(null)
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+            document.removeEventListener('pointermove', handleMove)
+            document.removeEventListener('pointerup', handleUp)
+        }
+
+        document.addEventListener('pointermove', handleMove)
+        document.addEventListener('pointerup', handleUp)
+    }, [])
+
+    // ===== ヒント表示判定 =====
+    const showHint = sels.length >= 2 && arrowConns.length === 0
 
     if (loading) return <Loading />
 
@@ -301,6 +359,18 @@ export default function PlanPage() {
                 <Search className="w-5 h-5" />
                 <span className="text-sm">学校を検索して追加...</span>
             </button>
+
+            {/* ヒント */}
+            {showHint && (
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-600">
+                    <span>
+                        カード右端の
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-400 mx-0.5 align-middle" />
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400 mx-0.5 align-middle" />
+                        をドラッグして別のカードに接続すると、合否フローを作成できます
+                    </span>
+                </div>
+            )}
 
             {/* ===== グリッド ===== */}
             <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-200 bg-white">
@@ -366,16 +436,14 @@ export default function PlanPage() {
                                                     key={sel.id}
                                                     sel={sel}
                                                     allSels={sels}
-                                                    onToggleBranch={toggleBranch}
-                                                    onAddFail={(srcId) =>
-                                                        setModal({ mode: 'branch', sourceId: srcId, conditionType: 'fail' })
-                                                    }
                                                     onRemove={handleRemove}
+                                                    onDeleteConnection={deleteConnection}
+                                                    onDragStart={startDrag}
+                                                    isDragTarget={!!drag && drag.fromSelId !== sel.id}
                                                     setRef={setCardRef}
                                                 />
                                             ))}
 
-                                            {/* セル追加ボタン (hover時に表示) */}
                                             <button
                                                 onClick={() => setModal({
                                                     mode: 'date',
@@ -394,38 +462,47 @@ export default function PlanPage() {
                     </div>
 
                     {/* ===== SVG 矢印オーバーレイ ===== */}
-                    {svgArrows.length > 0 && (
-                        <svg
-                            className="absolute inset-0 pointer-events-none overflow-visible"
-                            style={{ zIndex: 15 }}
-                        >
-                            <defs>
-                                <marker
-                                    id="ah-red"
-                                    viewBox="0 0 10 7"
-                                    refX="9"
-                                    refY="3.5"
-                                    markerWidth="8"
-                                    markerHeight="6"
-                                    orient="auto"
-                                >
-                                    <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
-                                </marker>
-                            </defs>
-                            {svgArrows.map(a => (
-                                <path
-                                    key={a.id}
-                                    d={a.d}
-                                    fill="none"
-                                    stroke="#ef4444"
-                                    strokeWidth={2.5}
-                                    strokeDasharray="8 4"
-                                    markerEnd="url(#ah-red)"
-                                    opacity={0.7}
-                                />
-                            ))}
-                        </svg>
-                    )}
+                    <svg
+                        className="absolute inset-0 pointer-events-none overflow-visible"
+                        style={{ zIndex: 15 }}
+                    >
+                        <defs>
+                            <marker id="ah-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e" />
+                            </marker>
+                            <marker id="ah-red" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+                            </marker>
+                        </defs>
+
+                        {/* 確定矢印 */}
+                        {svgArrows.map(a => (
+                            <path
+                                key={a.id}
+                                d={a.d}
+                                fill="none"
+                                stroke={a.type === 'pass' ? '#22c55e' : '#ef4444'}
+                                strokeWidth={2.5}
+                                strokeDasharray={a.type === 'fail' ? '8 4' : 'none'}
+                                markerEnd={`url(#ah-${a.type === 'pass' ? 'green' : 'red'})`}
+                                opacity={0.75}
+                            />
+                        ))}
+
+                        {/* ドラッグ中の一時線 */}
+                        {drag && (
+                            <line
+                                x1={drag.startX}
+                                y1={drag.startY}
+                                x2={drag.curX}
+                                y2={drag.curY}
+                                stroke={drag.type === 'pass' ? '#22c55e' : '#ef4444'}
+                                strokeWidth={2.5}
+                                strokeDasharray="6 3"
+                                opacity={0.8}
+                            />
+                        )}
+                    </svg>
                 </div>
             </div>
 
@@ -435,13 +512,7 @@ export default function PlanPage() {
                     state={modal}
                     sessions={sessions}
                     sels={sels}
-                    onSelect={(esId) => {
-                        if (modal.mode === 'branch' && modal.sourceId) {
-                            addBranch(esId, modal.sourceId, modal.conditionType || 'fail')
-                        } else {
-                            addSchool(esId)
-                        }
-                    }}
+                    onSelect={addSchool}
                     onClose={() => setModal(null)}
                 />
             )}
@@ -456,43 +527,77 @@ export default function PlanPage() {
 function SchoolCard({
     sel,
     allSels,
-    onToggleBranch,
-    onAddFail,
     onRemove,
+    onDeleteConnection,
+    onDragStart,
+    isDragTarget,
     setRef,
 }: {
     sel: UserExamSelection
     allSels: UserExamSelection[]
-    onToggleBranch: (id: string, cur: string) => void
-    onAddFail: (srcId: string) => void
     onRemove: (id: string) => void
+    onDeleteConnection: (targetId: string) => void
+    onDragStart: (selId: string, type: 'pass' | 'fail', e: React.PointerEvent) => void
+    isDragTarget: boolean
     setRef: (id: string, el: HTMLDivElement | null) => void
 }) {
     const es = sel.exam_session!
-    const hasBr = sel.on_pass_action === 'end'
-    const hasFailKid = allSels.some(s => s.condition_source_id === sel.id && s.condition_type === 'fail')
     const rc = rangeCfg(rangeOf(es.yotsuya_80))
 
-    // 分岐先か判定
-    const isOnBranch = !!sel.condition_source_id
-    const branchSrc = isOnBranch ? allSels.find(s => s.id === sel.condition_source_id) : null
+    // 受信接続 (この学校への矢印)
+    const incoming = sel.condition_source_id
+        ? allSels.find(s => s.id === sel.condition_source_id)
+        : null
+    const incomingType = sel.condition_type
+
+    // 送信接続 (この学校からの矢印)
+    const outgoing = allSels.filter(s => s.condition_source_id === sel.id)
+    const passTargets = outgoing.filter(s => s.condition_type === 'pass')
+    const failTargets = outgoing.filter(s => s.condition_type === 'fail')
 
     return (
         <div
             ref={el => setRef(sel.id, el)}
-            className={`rounded-lg p-2 mb-1.5 text-xs bg-white shadow-sm border transition-shadow hover:shadow-md ${
-                hasBr ? 'border-amber-300 ring-1 ring-amber-100' : 'border-gray-200'
-            } ${isOnBranch ? 'border-l-[3px] border-l-red-400' : ''}`}
+            data-drop-sel-id={sel.id}
+            className={`relative rounded-lg p-2 pr-6 mb-1.5 text-xs bg-white shadow-sm border transition-all hover:shadow-md ${
+                isDragTarget ? 'ring-2 ring-blue-400/60 border-blue-300' : 'border-gray-200'
+            } ${incoming ? (incomingType === 'pass' ? 'border-l-[3px] border-l-green-400' : 'border-l-[3px] border-l-red-400') : ''}`}
         >
-            {/* 分岐元表示 */}
-            {isOnBranch && branchSrc && (
-                <div className="text-[9px] text-red-400 mb-1 flex items-center gap-0.5 truncate">
-                    <XCircle className="w-2.5 h-2.5 flex-shrink-0" />
-                    <span className="truncate">{branchSrc.exam_session?.school?.name}</span>
-                    <span className="flex-shrink-0">x 不合格時</span>
+            {/* ─── 接続ハンドル (右端) ─── */}
+            <div className="absolute right-0 top-0 bottom-0 flex flex-col items-center justify-center gap-1.5 w-5 opacity-50 hover:opacity-100 transition-opacity">
+                {/* 合格ハンドル (緑) */}
+                <div
+                    className="w-3.5 h-3.5 rounded-full bg-green-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
+                    title="合格 (ドラッグで接続)"
+                    onPointerDown={e => onDragStart(sel.id, 'pass', e)}
+                />
+                {/* 不合格ハンドル (赤) */}
+                <div
+                    className="w-3.5 h-3.5 rounded-full bg-red-400 border-2 border-white shadow-sm cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
+                    title="不合格 (ドラッグで接続)"
+                    onPointerDown={e => onDragStart(sel.id, 'fail', e)}
+                />
+            </div>
+
+            {/* ─── 受信接続ラベル ─── */}
+            {incoming && (
+                <div className={`mb-1 flex items-center gap-0.5 text-[9px] ${
+                    incomingType === 'pass' ? 'text-green-500' : 'text-red-400'
+                }`}>
+                    <span className="flex-shrink-0">{incomingType === 'pass' ? '○' : 'x'}</span>
+                    <span className="truncate">{incoming.exam_session?.school?.name}</span>
+                    <span className="flex-shrink-0">{incomingType === 'pass' ? '合格時' : '不合格時'}</span>
+                    <button
+                        onClick={() => onDeleteConnection(sel.id)}
+                        className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500"
+                        title="接続を削除"
+                    >
+                        <X className="w-2.5 h-2.5" />
+                    </button>
                 </div>
             )}
 
+            {/* ─── メインコンテンツ ─── */}
             <div className="flex items-start gap-1.5">
                 {/* 偏差値バッジ */}
                 <div className={`w-7 h-7 rounded flex items-center justify-center font-bold text-[11px] flex-shrink-0 ring-1 ring-inset ${rc.badge}`}>
@@ -507,9 +612,11 @@ function SchoolCard({
                     <div className="text-[9px] text-gray-400 flex items-center gap-1 mt-0.5 flex-wrap">
                         <span>{es.session_label}</span>
                         {es.exam_subjects_label && (
-                            <span className="text-gray-300">|</span>
+                            <>
+                                <span className="text-gray-300">|</span>
+                                <span>{es.exam_subjects_label}</span>
+                            </>
                         )}
-                        {es.exam_subjects_label && <span>{es.exam_subjects_label}</span>}
                         {es.gender_type && (
                             <span className={
                                 es.gender_type === '男子校' ? 'text-blue-400' :
@@ -521,30 +628,17 @@ function SchoolCard({
                     </div>
                 </div>
 
-                {/* アクションボタン */}
-                <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button
-                        onClick={() => onToggleBranch(sel.id, sel.on_pass_action)}
-                        className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
-                            hasBr
-                                ? 'bg-amber-400 text-white hover:bg-amber-500'
-                                : 'text-gray-300 hover:text-amber-500 hover:bg-amber-50'
-                        }`}
-                        title={hasBr ? '分岐を解除' : '合否で分岐'}
-                    >
-                        <GitBranch className="w-3 h-3" />
-                    </button>
-                    <button
-                        onClick={() => onRemove(sel.id)}
-                        className="w-5 h-5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors"
-                        title="削除"
-                    >
-                        <X className="w-3 h-3" />
-                    </button>
-                </div>
+                {/* 削除ボタン */}
+                <button
+                    onClick={() => onRemove(sel.id)}
+                    className="w-5 h-5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors flex-shrink-0"
+                    title="削除"
+                >
+                    <X className="w-3 h-3" />
+                </button>
             </div>
 
-            {/* 時間情報 */}
+            {/* ─── 時間情報 ─── */}
             {(es.assembly_time || es.result_announcement) && (
                 <div className="mt-1.5 pt-1 border-t border-gray-100 text-[9px] text-gray-400 space-y-0.5">
                     {es.assembly_time && (
@@ -564,26 +658,35 @@ function SchoolCard({
                 </div>
             )}
 
-            {/* 分岐情報 */}
-            {hasBr && (
-                <div className="mt-1.5 pt-1 border-t border-amber-200 space-y-0.5">
-                    <div className="flex items-center gap-1 text-[9px] text-green-600 font-medium">
-                        <CheckCircle className="w-2.5 h-2.5 flex-shrink-0" />
-                        <span>合格 → 受験終了</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-[9px] text-red-500">
-                        <XCircle className="w-2.5 h-2.5 flex-shrink-0" />
-                        {hasFailKid ? (
-                            <span className="font-medium">不合格 → 代替校あり</span>
-                        ) : (
+            {/* ─── 送信接続ラベル ─── */}
+            {(passTargets.length > 0 || failTargets.length > 0) && (
+                <div className="mt-1.5 pt-1 border-t border-gray-100 space-y-0.5">
+                    {passTargets.map(t => (
+                        <div key={t.id} className="flex items-center gap-0.5 text-[9px] text-green-600">
+                            <span className="flex-shrink-0 font-medium">○→</span>
+                            <span className="truncate">{t.exam_session?.school?.name}</span>
                             <button
-                                onClick={() => onAddFail(sel.id)}
-                                className="font-medium underline decoration-dashed hover:text-red-700 transition-colors"
+                                onClick={() => onDeleteConnection(t.id)}
+                                className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500"
+                                title="接続を削除"
                             >
-                                不合格の場合を追加
+                                <X className="w-2.5 h-2.5" />
                             </button>
-                        )}
-                    </div>
+                        </div>
+                    ))}
+                    {failTargets.map(t => (
+                        <div key={t.id} className="flex items-center gap-0.5 text-[9px] text-red-500">
+                            <span className="flex-shrink-0 font-medium">x→</span>
+                            <span className="truncate">{t.exam_session?.school?.name}</span>
+                            <button
+                                onClick={() => onDeleteConnection(t.id)}
+                                className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500"
+                                title="接続を削除"
+                            >
+                                <X className="w-2.5 h-2.5" />
+                            </button>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
@@ -608,17 +711,7 @@ function SearchModal({
     onClose: () => void
 }) {
     const [q, setQ] = useState('')
-
     const selIds = new Set(sels.map(s => s.exam_session_id))
-    const branchIds = state.sourceId
-        ? new Set(
-            sels
-                .filter(s => s.condition_source_id === state.sourceId && s.condition_type === state.conditionType)
-                .map(s => s.exam_session_id)
-        )
-        : new Set<string>()
-
-    const srcSel = state.sourceId ? sels.find(s => s.id === state.sourceId) : null
 
     const filtered = useMemo(() => {
         let ss = sessions
@@ -631,11 +724,6 @@ function SearchModal({
             ss = ss.filter(s => (s.time_period || '午前') === state.periodFilter)
         }
 
-        if (state.mode === 'branch' && srcSel && !state.dateFilter) {
-            const sd = srcSel.exam_session?.test_date
-            if (sd) ss = ss.filter(s => s.test_date && s.test_date > sd)
-        }
-
         const lq = q.toLowerCase()
         if (lq) {
             ss = ss.filter(s =>
@@ -644,12 +732,10 @@ function SearchModal({
             )
         }
 
-        ss = ss.filter(s => !branchIds.has(s.id))
-        if (state.mode !== 'branch') ss = ss.filter(s => !selIds.has(s.id))
-        if (srcSel) ss = ss.filter(s => s.id !== srcSel.exam_session_id)
+        ss = ss.filter(s => !selIds.has(s.id))
 
         return ss
-    }, [sessions, state, q, branchIds, selIds, srcSel])
+    }, [sessions, state, q, selIds])
 
     const groups = useMemo(() => {
         const gs: { key: string; label: string; items: ExamSession[] }[] = []
@@ -666,11 +752,7 @@ function SearchModal({
     }, [filtered])
 
     let title: string
-    if (state.mode === 'branch' && srcSel) {
-        const cl = state.conditionType === 'pass' ? '合格' : '不合格'
-        title = `${srcSel.exam_session?.school?.name} ${cl}の場合`
-        if (state.dateFilter) title += ` (${fmtDate(state.dateFilter)})`
-    } else if (state.dateFilter) {
+    if (state.dateFilter) {
         title = `${fmtDate(state.dateFilter)}${state.periodFilter ? ` ${state.periodFilter}` : ''} に追加`
     } else {
         title = '学校を追加'
@@ -682,20 +764,13 @@ function SearchModal({
                 className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col shadow-2xl"
                 onClick={e => e.stopPropagation()}
             >
-                {/* ヘッダー */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                    <div className="flex items-center gap-2">
-                        {state.mode === 'branch' && (
-                            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                        )}
-                        <h3 className="text-base font-bold text-gray-800">{title}</h3>
-                    </div>
+                    <h3 className="text-base font-bold text-gray-800">{title}</h3>
                     <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* 検索バー */}
                 <div className="px-4 py-3 border-b border-gray-50">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -710,7 +785,6 @@ function SearchModal({
                     </div>
                 </div>
 
-                {/* 結果リスト */}
                 <div className="overflow-y-auto flex-1">
                     {filtered.length === 0 ? (
                         <p className="text-gray-400 text-center py-8 text-sm">
@@ -723,7 +797,6 @@ function SearchModal({
                                     {g.label}
                                 </div>
                                 {g.items.map(es => {
-                                    const already = selIds.has(es.id)
                                     const rc = rangeCfg(rangeOf(es.yotsuya_80))
 
                                     return (
@@ -732,7 +805,6 @@ function SearchModal({
                                             onClick={() => onSelect(es.id)}
                                             className="w-full text-left px-4 py-2.5 hover:bg-teal-50 active:bg-teal-100 transition-colors flex items-center gap-3 border-b border-gray-50"
                                         >
-                                            {/* 偏差値バッジ */}
                                             <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold ring-1 ring-inset ${rc.badge}`}>
                                                 {es.yotsuya_80 ?? '?'}
                                             </div>
@@ -749,11 +821,6 @@ function SearchModal({
                                                     }`}>
                                                         {es.time_period || '午前'}
                                                     </span>
-                                                    {already && (
-                                                        <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full flex-shrink-0">
-                                                            選択済
-                                                        </span>
-                                                    )}
                                                     {es.gender_type && (
                                                         <span className={`text-[10px] px-1 py-0.5 rounded flex-shrink-0 ${
                                                             es.gender_type === '男子校'
