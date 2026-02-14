@@ -96,6 +96,8 @@ export default function PlanPage() {
     const [drag, setDrag] = useState<DragState | null>(null)
     const [hoveredSelId, setHoveredSelId] = useState<string | null>(null)
     const [printMode, setPrintMode] = useState(false)
+    const [hoveredArrowId, setHoveredArrowId] = useState<string | null>(null)
+    const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
     const supabase = createClient()
 
     const fetchData = useCallback(async () => {
@@ -227,27 +229,36 @@ export default function PlanPage() {
 
     // ===== ホバー関連 =====
     const hoveredConnIds = useMemo(() => {
-        if (!hoveredSelId) return new Set<string>()
-        const ids = new Set<string>([hoveredSelId])
-        for (const a of arrowConns) {
-            if (a.from === hoveredSelId || a.to === hoveredSelId) {
-                ids.add(a.from)
-                ids.add(a.to)
+        const ids = new Set<string>()
+        if (hoveredSelId) {
+            ids.add(hoveredSelId)
+            for (const a of arrowConns) {
+                if (a.from === hoveredSelId || a.to === hoveredSelId) {
+                    ids.add(a.from)
+                    ids.add(a.to)
+                }
             }
         }
+        if (hoveredArrowId) {
+            const arr = arrowConns.find(a => a.id === hoveredArrowId)
+            if (arr) { ids.add(arr.from); ids.add(arr.to) }
+        }
         return ids
-    }, [hoveredSelId, arrowConns])
+    }, [hoveredSelId, hoveredArrowId, arrowConns])
 
-    const visibleArrows = useMemo(() => {
-        if (printMode) return arrowConns
-        if (!hoveredSelId) return []
-        return arrowConns.filter(a => a.from === hoveredSelId || a.to === hoveredSelId)
-    }, [hoveredSelId, arrowConns, printMode])
+    const handleHover = useCallback((selId: string | null) => {
+        if (hoverTimeout.current) clearTimeout(hoverTimeout.current)
+        if (selId) {
+            setHoveredSelId(selId)
+        } else {
+            hoverTimeout.current = setTimeout(() => setHoveredSelId(null), 200)
+        }
+    }, [])
 
-    // ===== 矢印描画 (ホバー時のみ) =====
+    // ===== 矢印描画 (常時表示) =====
     const contentRef = useRef<HTMLDivElement>(null)
     const cardRefs = useRef(new Map<string, HTMLDivElement>())
-    const [svgArrows, setSvgArrows] = useState<{ id: string; d: string; type: 'pass' | 'fail' }[]>([])
+    const [svgArrows, setSvgArrows] = useState<{ id: string; d: string; type: 'pass' | 'fail'; midX: number; midY: number; fromSelId: string; toSelId: string }[]>([])
 
     const setCardRef = useCallback((id: string, el: HTMLDivElement | null) => {
         if (el) cardRefs.current.set(id, el)
@@ -259,12 +270,12 @@ export default function PlanPage() {
         if (!c) return
 
         const calc = () => {
-            if (visibleArrows.length === 0) { setSvgArrows([]); return }
+            if (arrowConns.length === 0) { setSvgArrows([]); return }
 
             const cr = c.getBoundingClientRect()
-            const paths: { id: string; d: string; type: 'pass' | 'fail' }[] = []
+            const paths: { id: string; d: string; type: 'pass' | 'fail'; midX: number; midY: number; fromSelId: string; toSelId: string }[] = []
 
-            for (const a of visibleArrows) {
+            for (const a of arrowConns) {
                 const fe = cardRefs.current.get(a.from)
                 const te = cardRefs.current.get(a.to)
                 if (!fe || !te) continue
@@ -277,12 +288,16 @@ export default function PlanPage() {
                 const tx = tr.left - cr.left - 4
                 const ty = tr.top + tr.height / 2 - cr.top
                 const dx = Math.abs(tx - fx)
-                const cp = Math.max(dx * 0.35, 40)
+                const cp = dx * 0.4
 
                 paths.push({
                     id: a.id,
                     d: `M${fx},${fy} C${fx + cp},${fy} ${tx - cp},${ty} ${tx},${ty}`,
                     type: a.type,
+                    midX: (fx + tx) / 2,
+                    midY: (fy + ty) / 2,
+                    fromSelId: a.from,
+                    toSelId: a.to,
                 })
             }
 
@@ -297,7 +312,7 @@ export default function PlanPage() {
             cancelAnimationFrame(raf)
             ro.disconnect()
         }
-    }, [visibleArrows, sels])
+    }, [arrowConns, sels])
 
     // ===== ドラッグ操作 =====
     const createConnectionRef = useRef(createConnection)
@@ -408,23 +423,23 @@ export default function PlanPage() {
             )}
 
             {/* ===== グリッド ===== */}
-            <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-200 bg-white">
+            <div className="overflow-auto rounded-xl shadow-sm border border-gray-200 bg-white" style={{ maxHeight: '70vh' }}>
                 <div ref={contentRef} className="min-w-fit relative">
                     <div
                         style={{
                             display: 'grid',
                             gridTemplateColumns: `72px ${dateGroups.map((g, i) =>
-                                `${i > 0 ? '20px ' : ''}repeat(${g.cols.length}, minmax(240px, 1fr))`
+                                `${i > 0 ? '20px ' : ''}repeat(${g.cols.length}, minmax(190px, 1fr))`
                             ).join(' ')}`,
                         }}
                     >
                         {/* ─── ヘッダー行1: 日付グループ ─── */}
-                        <div className="bg-gray-100 border-b border-r border-gray-200" />
+                        <div className="bg-gray-100 border-b border-r border-gray-200 sticky top-0 left-0 z-50" />
                         {dateGroups.map((g, i) => (
                             <Fragment key={`dg-${g.date}`}>
-                                {i > 0 && <div className="bg-gray-50 border-b border-gray-200" />}
+                                {i > 0 && <div className="bg-gray-50 border-b border-gray-200 sticky top-0 z-40" />}
                                 <div
-                                    className={`border-b border-r border-gray-200 px-2 py-2.5 text-center font-bold text-sm ${
+                                    className={`border-b border-r border-gray-200 px-2 py-2.5 text-center font-bold text-sm sticky top-0 z-40 ${
                                         g.isJan ? 'bg-amber-50 text-amber-700' : 'bg-teal-600 text-white'
                                     }`}
                                     style={{ gridColumn: `span ${g.cols.length}` }}
@@ -435,16 +450,16 @@ export default function PlanPage() {
                         ))}
 
                         {/* ─── ヘッダー行2: 偏差値ラベル + 午前/午後 ─── */}
-                        <div className="bg-gray-100 border-b-2 border-r border-gray-300 px-1 py-1.5 flex items-center justify-center sticky left-0 z-20">
+                        <div className="bg-gray-100 border-b-2 border-r border-gray-300 px-1 py-1.5 flex items-center justify-center sticky left-0 top-[41px] z-50">
                             <span className="text-[10px] font-bold text-gray-400">偏差値</span>
                         </div>
                         {dateGroups.map((g, i) => (
                             <Fragment key={`ph-grp-${g.date}`}>
-                                {i > 0 && <div className="bg-gray-50 border-b-2 border-gray-300" />}
+                                {i > 0 && <div className="bg-gray-50 border-b-2 border-gray-300 sticky top-[41px] z-40" />}
                                 {g.cols.map(col => (
                                     <div
                                         key={`ph-${col.key}`}
-                                        className={`border-b-2 border-r border-gray-300 px-1 py-1.5 text-center text-xs font-semibold ${
+                                        className={`border-b-2 border-r border-gray-300 px-1 py-1.5 text-center text-xs font-semibold sticky top-[41px] z-40 ${
                                             col.period === '午後'
                                                 ? 'bg-indigo-50 text-indigo-600'
                                                 : 'bg-gray-50 text-gray-500'
@@ -482,14 +497,12 @@ export default function PlanPage() {
                                                         <SchoolCard
                                                             key={sel.id}
                                                             sel={sel}
-                                                            allSels={sels}
                                                             onRemove={handleRemove}
-                                                            onDeleteConnection={deleteConnection}
                                                             onDragStart={startDrag}
                                                             isDragTarget={!!drag && drag.fromSelId !== sel.id}
                                                             isHighlighted={!printMode && hoveredConnIds.has(sel.id)}
-                                                            isDimmed={!printMode && !!hoveredSelId && !hoveredConnIds.has(sel.id)}
-                                                            onHover={setHoveredSelId}
+                                                            isDimmed={!printMode && (!!hoveredSelId || !!hoveredArrowId) && !hoveredConnIds.has(sel.id)}
+                                                            onHover={handleHover}
                                                             setRef={setCardRef}
                                                             printMode={printMode}
                                                         />
@@ -522,36 +535,75 @@ export default function PlanPage() {
                         style={{ zIndex: 30 }}
                     >
                         <defs>
-                            <marker id="ah-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+                            <marker id="ah-green" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="6" markerHeight="5" orient="auto">
                                 <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e" />
                             </marker>
-                            <marker id="ah-red" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+                            <marker id="ah-red" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="6" markerHeight="5" orient="auto">
                                 <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
                             </marker>
                         </defs>
 
-                        {/* ホバー時の矢印 */}
-                        {svgArrows.map(a => (
-                            <g key={a.id}>
-                                {/* 白アウトライン (視認性向上) */}
-                                <path
-                                    d={a.d}
-                                    fill="none"
-                                    stroke="white"
-                                    strokeWidth={5}
-                                    strokeLinecap="round"
-                                />
-                                {/* カラー矢印 */}
-                                <path
-                                    d={a.d}
-                                    fill="none"
-                                    stroke={a.type === 'pass' ? '#22c55e' : '#ef4444'}
-                                    strokeWidth={2.5}
-                                    strokeDasharray={a.type === 'fail' ? '8 4' : 'none'}
-                                    markerEnd={`url(#ah-${a.type === 'pass' ? 'green' : 'red'})`}
-                                />
-                            </g>
-                        ))}
+                        {/* 矢印 (常時表示、ホバーでハイライト) */}
+                        {svgArrows.map(a => {
+                            const isHoveredArrow = hoveredArrowId === a.id
+                            const isConnected = hoveredSelId && (a.fromSelId === hoveredSelId || a.toSelId === hoveredSelId)
+                            const isActive = isHoveredArrow || isConnected
+                            const somethingHovered = !!hoveredSelId || !!hoveredArrowId
+                            const opacity = printMode ? 1 : isActive ? 1 : somethingHovered ? 0.15 : 0.5
+                            const sw = isHoveredArrow ? 2.5 : isActive ? 1.8 : 1.2
+                            const color = a.type === 'pass' ? '#22c55e' : '#ef4444'
+
+                            return (
+                                <g
+                                    key={a.id}
+                                    opacity={opacity}
+                                    onMouseEnter={() => {
+                                        if (hoverTimeout.current) clearTimeout(hoverTimeout.current)
+                                        setHoveredArrowId(a.id)
+                                    }}
+                                    onMouseLeave={() => setHoveredArrowId(null)}
+                                >
+                                    {/* ヒットエリア (透明・太め) */}
+                                    <path
+                                        d={a.d}
+                                        fill="none"
+                                        stroke="transparent"
+                                        strokeWidth={16}
+                                        style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                                    />
+                                    {/* 白アウトライン */}
+                                    <path
+                                        d={a.d}
+                                        fill="none"
+                                        stroke="white"
+                                        strokeWidth={sw + 2}
+                                        strokeLinecap="round"
+                                        style={{ pointerEvents: 'none' }}
+                                    />
+                                    {/* カラー矢印 */}
+                                    <path
+                                        d={a.d}
+                                        fill="none"
+                                        stroke={color}
+                                        strokeWidth={sw}
+                                        strokeDasharray={a.type === 'fail' ? '6 3' : 'none'}
+                                        markerEnd={`url(#ah-${a.type === 'pass' ? 'green' : 'red'})`}
+                                        style={{ pointerEvents: 'none' }}
+                                    />
+                                    {/* 削除ボタン (矢印ホバー時) */}
+                                    {isHoveredArrow && !printMode && (
+                                        <g
+                                            onClick={() => deleteConnection(a.toSelId)}
+                                            style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                                        >
+                                            <circle cx={a.midX} cy={a.midY} r={9} fill="white" stroke="#ef4444" strokeWidth={1.5} />
+                                            <line x1={a.midX - 3.5} y1={a.midY - 3.5} x2={a.midX + 3.5} y2={a.midY + 3.5} stroke="#ef4444" strokeWidth={2} strokeLinecap="round" />
+                                            <line x1={a.midX + 3.5} y1={a.midY - 3.5} x2={a.midX - 3.5} y2={a.midY + 3.5} stroke="#ef4444" strokeWidth={2} strokeLinecap="round" />
+                                        </g>
+                                    )}
+                                </g>
+                            )
+                        })}
 
                         {/* ドラッグ中の一時線 */}
                         {drag && (
@@ -577,7 +629,7 @@ export default function PlanPage() {
                     arrowConns={arrowConns}
                     onDeleteConnection={deleteConnection}
                     hoveredSelId={hoveredSelId}
-                    onHover={setHoveredSelId}
+                    onHover={handleHover}
                     printMode={printMode}
                 />
             )}
@@ -602,9 +654,7 @@ export default function PlanPage() {
 
 function SchoolCard({
     sel,
-    allSels,
     onRemove,
-    onDeleteConnection,
     onDragStart,
     isDragTarget,
     isHighlighted,
@@ -614,9 +664,7 @@ function SchoolCard({
     printMode,
 }: {
     sel: UserExamSelection
-    allSels: UserExamSelection[]
     onRemove: (id: string) => void
-    onDeleteConnection: (targetId: string) => void
     onDragStart: (selId: string, type: 'pass' | 'fail', e: React.PointerEvent) => void
     isDragTarget: boolean
     isHighlighted: boolean
@@ -627,17 +675,7 @@ function SchoolCard({
 }) {
     const es = sel.exam_session!
     const rc = rangeCfg(rangeOf(es.yotsuya_80))
-
-    // 受信接続 (この学校への矢印)
-    const incoming = sel.condition_source_id
-        ? allSels.find(s => s.id === sel.condition_source_id)
-        : null
-    const incomingType = sel.condition_type
-
-    // 送信接続 (この学校からの矢印)
-    const outgoing = allSels.filter(s => s.condition_source_id === sel.id)
-    const passTargets = outgoing.filter(s => s.condition_type === 'pass')
-    const failTargets = outgoing.filter(s => s.condition_type === 'fail')
+    const hasIncoming = !!sel.condition_source_id
 
     return (
         <div
@@ -650,7 +688,7 @@ function SchoolCard({
                 : isHighlighted ? 'ring-2 ring-teal-400/60 border-teal-300 shadow-md'
                 : 'border-gray-200'
             } ${isDimmed ? 'opacity-40' : ''} ${
-                incoming ? (incomingType === 'pass' ? 'border-l-[3px] border-l-green-400' : 'border-l-[3px] border-l-red-400') : ''
+                hasIncoming ? (sel.condition_type === 'pass' ? 'border-l-[3px] border-l-green-400' : 'border-l-[3px] border-l-red-400') : ''
             }`}
             style={{ zIndex: isHighlighted ? 25 : undefined }}
         >
@@ -667,26 +705,6 @@ function SchoolCard({
                         title="不合格 (ドラッグで接続)"
                         onPointerDown={e => onDragStart(sel.id, 'fail', e)}
                     />
-                </div>
-            )}
-
-            {/* ─── 受信接続ラベル ─── */}
-            {incoming && (
-                <div className={`mb-1 flex items-center gap-0.5 text-[9px] ${
-                    incomingType === 'pass' ? 'text-green-500' : 'text-red-400'
-                }`}>
-                    <span className="flex-shrink-0">{incomingType === 'pass' ? '○' : 'x'}</span>
-                    <span className="truncate">{incoming.exam_session?.school?.name}</span>
-                    <span className="flex-shrink-0">{incomingType === 'pass' ? '合格時' : '不合格時'}</span>
-                    {!printMode && (
-                        <button
-                            onClick={() => onDeleteConnection(sel.id)}
-                            className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500 print:hidden"
-                            title="接続を削除"
-                        >
-                            <X className="w-2.5 h-2.5" />
-                        </button>
-                    )}
                 </div>
             )}
 
@@ -747,42 +765,6 @@ function SchoolCard({
                             <span className="text-gray-300">発表</span> {fmtAnnounce(es.result_announcement)}
                         </div>
                     )}
-                </div>
-            )}
-
-            {/* ─── 送信接続ラベル ─── */}
-            {(passTargets.length > 0 || failTargets.length > 0) && (
-                <div className="mt-1.5 pt-1 border-t border-gray-100 space-y-0.5">
-                    {passTargets.map(t => (
-                        <div key={t.id} className="flex items-center gap-0.5 text-[9px] text-green-600">
-                            <span className="flex-shrink-0 font-medium">○→</span>
-                            <span className="truncate">{t.exam_session?.school?.name}</span>
-                            {!printMode && (
-                                <button
-                                    onClick={() => onDeleteConnection(t.id)}
-                                    className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500 print:hidden"
-                                    title="接続を削除"
-                                >
-                                    <X className="w-2.5 h-2.5" />
-                                </button>
-                            )}
-                        </div>
-                    ))}
-                    {failTargets.map(t => (
-                        <div key={t.id} className="flex items-center gap-0.5 text-[9px] text-red-500">
-                            <span className="flex-shrink-0 font-medium">x→</span>
-                            <span className="truncate">{t.exam_session?.school?.name}</span>
-                            {!printMode && (
-                                <button
-                                    onClick={() => onDeleteConnection(t.id)}
-                                    className="flex-shrink-0 ml-auto w-3.5 h-3.5 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-500 print:hidden"
-                                    title="接続を削除"
-                                >
-                                    <X className="w-2.5 h-2.5" />
-                                </button>
-                            )}
-                        </div>
-                    ))}
                 </div>
             )}
         </div>

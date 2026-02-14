@@ -368,22 +368,35 @@ export default function EditPage() {
 
             // ローカルデータを更新
             const updatedData = [...data]
-            const actualRowIndex = data.findIndex(r => r.sessionId === row.sessionId)
-            if (actualRowIndex !== -1) {
-                let finalValue: string | number | undefined
-                if (columnKey === 'year') {
-                    finalValue = parseInt(newValue)
-                } else if (['schoolName', 'alias', 'sessionLabel'].includes(columnKey)) {
-                    finalValue = newValue
-                } else {
-                    finalValue = numValue === null ? undefined : numValue
-                }
-
-                updatedData[actualRowIndex] = {
-                    ...updatedData[actualRowIndex],
-                    [columnKey]: finalValue,
-                }
+            if (columnKey === 'schoolName' || columnKey === 'alias') {
+                // 学校名・別名は同じ学校の全セッションを更新
+                updatedData.forEach((r, idx) => {
+                    if (r.schoolId === row.schoolId) {
+                        updatedData[idx] = {
+                            ...updatedData[idx],
+                            [columnKey]: newValue,
+                        }
+                    }
+                })
                 setData(updatedData)
+            } else {
+                const actualRowIndex = data.findIndex(r => r.sessionId === row.sessionId)
+                if (actualRowIndex !== -1) {
+                    let finalValue: string | number | undefined
+                    if (columnKey === 'year') {
+                        finalValue = parseInt(newValue)
+                    } else if (columnKey === 'sessionLabel') {
+                        finalValue = newValue
+                    } else {
+                        finalValue = numValue === null ? undefined : numValue
+                    }
+
+                    updatedData[actualRowIndex] = {
+                        ...updatedData[actualRowIndex],
+                        [columnKey]: finalValue,
+                    }
+                    setData(updatedData)
+                }
             }
 
             setSuccessMessage('保存しました')
@@ -851,36 +864,84 @@ export default function EditPage() {
 
                                                     {/* 詳細編集フォーム */}
                                                     {isSessionExpanded && (
-                                                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                                            {SUBJECT_FIELDS.map(field => {
-                                                                const value = session[field.key as keyof FlattenedRow]
-                                                                const cellKey = `${session.sessionId}-${field.key}`
-                                                                const isSaving = savingCell === cellKey
+                                                        <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+                                                            {/* 基本情報の編集 */}
+                                                            <div>
+                                                                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">基本情報</h4>
+                                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                                    {[
+                                                                        { key: 'schoolName', label: '学校名', value: session.schoolName, hint: '※同じ学校の全データに反映' },
+                                                                        { key: 'alias', label: '別名', value: session.alias, hint: '※検索用（任意）' },
+                                                                        { key: 'year', label: '年度', value: session.year },
+                                                                        { key: 'sessionLabel', label: '回', value: session.sessionLabel },
+                                                                    ].map(field => {
+                                                                        const cellKey = `${session.sessionId}-${field.key}`
+                                                                        const isSaving = savingCell === cellKey
+                                                                        return (
+                                                                            <div key={field.key}>
+                                                                                <label className="block text-xs text-slate-500 mb-1">
+                                                                                    {field.label}
+                                                                                </label>
+                                                                                <div className="relative">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        defaultValue={field.value ?? ''}
+                                                                                        onBlur={(e) => handleCellEdit(session.sessionId, field.key, e.target.value)}
+                                                                                        onKeyDown={(e) => {
+                                                                                            if (e.key === 'Enter') {
+                                                                                                e.currentTarget.blur()
+                                                                                            }
+                                                                                        }}
+                                                                                        className="w-full px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-blue-50/30"
+                                                                                    />
+                                                                                    {isSaving && (
+                                                                                        <Loader2 className="w-3 h-3 animate-spin text-blue-600 absolute right-2 top-1/2 -translate-y-1/2" />
+                                                                                    )}
+                                                                                </div>
+                                                                                {field.hint && (
+                                                                                    <p className="text-[10px] text-slate-400 mt-0.5">{field.hint}</p>
+                                                                                )}
+                                                                            </div>
+                                                                        )
+                                                                    })}
+                                                                </div>
+                                                            </div>
 
-                                                                return (
-                                                                    <div key={field.key}>
-                                                                        <label className="block text-xs text-slate-500 mb-1">
-                                                                            {field.label}
-                                                                        </label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type="text"
-                                                                                defaultValue={value ?? ''}
-                                                                                onBlur={(e) => handleCellEdit(session.sessionId, field.key, e.target.value)}
-                                                                                onKeyDown={(e) => {
-                                                                                    if (e.key === 'Enter') {
-                                                                                        e.currentTarget.blur()
-                                                                                    }
-                                                                                }}
-                                                                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                                                                            />
-                                                                            {isSaving && (
-                                                                                <Loader2 className="w-3 h-3 animate-spin text-blue-600 absolute right-2 top-1/2 -translate-y-1/2" />
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                )
-                                                            })}
+                                                            {/* 科目データの編集 */}
+                                                            <div>
+                                                                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">科目・得点データ</h4>
+                                                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                                                    {SUBJECT_FIELDS.map(field => {
+                                                                        const value = session[field.key as keyof FlattenedRow]
+                                                                        const cellKey = `${session.sessionId}-${field.key}`
+                                                                        const isSaving = savingCell === cellKey
+
+                                                                        return (
+                                                                            <div key={field.key}>
+                                                                                <label className="block text-xs text-slate-500 mb-1">
+                                                                                    {field.label}
+                                                                                </label>
+                                                                                <div className="relative">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        defaultValue={value ?? ''}
+                                                                                        onBlur={(e) => handleCellEdit(session.sessionId, field.key, e.target.value)}
+                                                                                        onKeyDown={(e) => {
+                                                                                            if (e.key === 'Enter') {
+                                                                                                e.currentTarget.blur()
+                                                                                            }
+                                                                                        }}
+                                                                                        className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                                                    />
+                                                                                    {isSaving && (
+                                                                                        <Loader2 className="w-3 h-3 animate-spin text-blue-600 absolute right-2 top-1/2 -translate-y-1/2" />
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )
+                                                                    })}
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
