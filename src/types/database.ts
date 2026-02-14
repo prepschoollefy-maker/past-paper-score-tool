@@ -10,22 +10,9 @@ export interface Profile {
     created_at: string
 }
 
-export type EstablishmentType = '国立' | '私立' | '公立中高一貫'
-export type SchoolType = '男子校' | '女子校' | '共学校'
-
 export interface School {
     id: string
     name: string
-    study_id: string | null
-    mext_code: string | null
-    yotsuya_deviation_value: number | null
-    establishment: EstablishmentType | null
-    school_type: SchoolType | null
-    area: string | null
-    prefecture: string | null
-    address: string | null
-    postal_code: string | null
-    study_url: string | null
     created_at: string
 }
 
