@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Database, Upload, Users, BarChart3 } from 'lucide-react'
+import { Database, Upload, Users, BarChart3, SearchCheck } from 'lucide-react'
 
 export default async function AdminPage() {
     const supabase = await createClient()
@@ -47,6 +47,13 @@ export default async function AdminPage() {
             href: '/admin-panel/import',
             icon: Upload,
             gradient: 'from-amber-500 to-amber-700',
+        },
+        {
+            title: 'データ検証',
+            description: 'CSVデータをAIがWeb検索やPDF照合で検証',
+            href: '/admin-panel/data-validator',
+            icon: SearchCheck,
+            gradient: 'from-cyan-500 to-cyan-700',
         },
     ]
 
