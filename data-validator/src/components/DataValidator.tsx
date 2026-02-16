@@ -279,29 +279,11 @@ export default function DataValidator() {
         callPreCheck(updatedMessages)
     }, [currentQuestions, questionAnswers, preCheckMessages, callPreCheck])
 
-    // 事前確認コンテキストをテキスト化
+    // 事前確認コンテキスト（最終要約のみ送信してトークン節約）
     const buildPreCheckContext = useCallback((): string | undefined => {
-        if (preCheckMessages.length === 0) return undefined
-
-        const lines: string[] = []
-        for (const m of preCheckMessages) {
-            if (m.role === 'user') {
-                lines.push(`ユーザー: ${m.content}`)
-            } else {
-                // assistantのJSON応答からmessageを抽出
-                try {
-                    const parsed = JSON.parse(m.content)
-                    if (parsed.message) lines.push(`AI: ${parsed.message}`)
-                } catch {
-                    lines.push(`AI: ${m.content}`)
-                }
-            }
-        }
-        if (preCheckSummary) {
-            lines.push(`\n## 最終合意: ${preCheckSummary}`)
-        }
-        return lines.join('\n\n')
-    }, [preCheckMessages, preCheckSummary])
+        if (!preCheckSummary) return undefined
+        return preCheckSummary
+    }, [preCheckSummary])
 
     // --- 検証実行 ---
     const runValidation = useCallback(async () => {
@@ -329,7 +311,7 @@ export default function DataValidator() {
 
             // バッチ間ディレイ（レートリミット対策）
             if (batchIdx > 0) {
-                await new Promise(resolve => setTimeout(resolve, 3000))
+                await new Promise(resolve => setTimeout(resolve, 10000))
             }
 
             let retries = 0
