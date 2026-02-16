@@ -8,6 +8,7 @@ interface ValidateRequest {
     mode: 'web' | 'pdf'
     pdfBase64?: string
     model: string
+    preCheckContext?: string
 }
 
 interface ValidationResult {
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body: ValidateRequest = await request.json()
-        const { rows, headers, prompt, mode, pdfBase64, model } = body
+        const { rows, headers, prompt, mode, pdfBase64, model, preCheckContext } = body
 
         if (!rows || rows.length === 0) {
             return NextResponse.json(
@@ -69,6 +70,11 @@ export async function POST(request: NextRequest) {
 - NG: 明らかな誤りを発見した（具体的に何が間違っているか記載）
 - WARN: 確認できなかった、または疑わしい点がある（理由を記載）`
 
+        // 事前確認コンテキストがある場合、追加
+        const preCheckSection = preCheckContext
+            ? `\n\n## 事前確認で合意した検証方針\n${preCheckContext}`
+            : ''
+
         // メッセージコンテンツを構築
         const userContent: Anthropic.ContentBlockParam[] = []
 
@@ -97,7 +103,7 @@ export async function POST(request: NextRequest) {
         const messageParams: Anthropic.MessageCreateParams = {
             model: model || 'claude-sonnet-4-5-20250929',
             max_tokens: 4096,
-            system: systemPrompt,
+            system: systemPrompt + preCheckSection,
             messages: [{ role: 'user', content: userContent }],
         }
 

@@ -14,6 +14,9 @@ import {
     AlertTriangle,
     Loader2,
     X,
+    MessageCircle,
+    Send,
+    SkipForward,
 } from 'lucide-react'
 import { downloadExcel } from '@/lib/excelExport'
 import ExcelJS from 'exceljs'
@@ -35,6 +38,11 @@ interface BatchResult {
 }
 
 type FilterStatus = 'ALL' | 'OK' | 'NG' | 'WARN'
+
+interface ChatMessage {
+    role: 'user' | 'assistant'
+    content: string
+}
 
 // --- プロンプトテンプレート ---
 
@@ -95,6 +103,12 @@ export default function DataValidator() {
 
     // 結果フィルター
     const [filter, setFilter] = useState<FilterStatus>('ALL')
+
+    // 事前確認チャット
+    const [preCheckMessages, setPreCheckMessages] = useState<ChatMessage[]>([])
+    const [isPreChecking, setIsPreChecking] = useState(false)
+    const [userInput, setUserInput] = useState('')
+    const chatEndRef = useRef<HTMLDivElement>(null)
 
     // --- CSV解析 ---
     const parseCSV = useCallback((text: string) => {
@@ -180,6 +194,89 @@ export default function DataValidator() {
         setMode(template.mode)
     }, [])
 
+    // --- 事前確認チャット ---
+    const startPreCheck = useCallback(async () => {
+        if (csvRows.length === 0 || !prompt.trim()) return
+        setIsPreChecking(true)
+        setError(null)
+
+        try {
+            const res = await fetch('/api/pre-check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    headers: csvHeaders,
+                    sampleRows: csvRows.slice(0, 5),
+                    prompt,
+                    mode,
+                    pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
+                    model,
+                    messages: [],
+                }),
+            })
+
+            if (!res.ok) {
+                const errData = await res.json()
+                setError(errData.error || `HTTP ${res.status}`)
+                return
+            }
+
+            const data = await res.json()
+            setPreCheckMessages([{ role: 'assistant', content: data.reply }])
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '通信エラー')
+        } finally {
+            setIsPreChecking(false)
+        }
+    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, model])
+
+    const sendPreCheckMessage = useCallback(async () => {
+        if (!userInput.trim() || isPreChecking) return
+
+        const newUserMsg: ChatMessage = { role: 'user', content: userInput.trim() }
+        const updatedMessages = [...preCheckMessages, newUserMsg]
+        setPreCheckMessages(updatedMessages)
+        setUserInput('')
+        setIsPreChecking(true)
+
+        try {
+            const res = await fetch('/api/pre-check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    headers: csvHeaders,
+                    sampleRows: csvRows.slice(0, 5),
+                    prompt,
+                    mode,
+                    pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
+                    model,
+                    messages: updatedMessages,
+                }),
+            })
+
+            if (!res.ok) {
+                const errData = await res.json()
+                setError(errData.error || `HTTP ${res.status}`)
+                return
+            }
+
+            const data = await res.json()
+            setPreCheckMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '通信エラー')
+        } finally {
+            setIsPreChecking(false)
+        }
+    }, [userInput, isPreChecking, preCheckMessages, csvHeaders, csvRows, prompt, mode, pdfBase64, model])
+
+    // チャットコンテキストをテキスト化
+    const buildPreCheckContext = useCallback((): string | undefined => {
+        if (preCheckMessages.length === 0) return undefined
+        return preCheckMessages.map(m =>
+            `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`
+        ).join('\n\n')
+    }, [preCheckMessages])
+
     // --- 検証実行 ---
     const runValidation = useCallback(async () => {
         if (csvRows.length === 0) return
@@ -215,6 +312,7 @@ export default function DataValidator() {
                         mode,
                         pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
                         model,
+                        preCheckContext: buildPreCheckContext(),
                     }),
                 })
 
@@ -252,7 +350,7 @@ export default function DataValidator() {
         }
 
         setIsRunning(false)
-    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, batchSize, model])
+    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, batchSize, model, buildPreCheckContext])
 
     const stopValidation = useCallback(() => {
         abortRef.current = true
@@ -528,6 +626,94 @@ export default function DataValidator() {
                 </div>
             </div>
 
+            {/* Step 4: 事前確認チャット */}
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+                <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-teal-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <MessageCircle className="w-6 h-6 text-teal-400" />
+                    </div>
+                    <div className="flex-1 space-y-4">
+                        <div>
+                            <h2 className="font-semibold text-white mb-1">4. 事前確認（推奨）</h2>
+                            <p className="text-sm text-slate-400">検証前にAIとデータの内容・チェック方針を擦り合わせます</p>
+                        </div>
+
+                        {preCheckMessages.length === 0 ? (
+                            <button
+                                onClick={startPreCheck}
+                                disabled={csvRows.length === 0 || !prompt.trim() || isPreChecking}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                            >
+                                {isPreChecking ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <MessageCircle className="w-4 h-4" />
+                                )}
+                                事前確認を開始
+                            </button>
+                        ) : (
+                            <>
+                                {/* チャット履歴 */}
+                                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                                    {preCheckMessages.map((msg, i) => (
+                                        <div
+                                            key={i}
+                                            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                        >
+                                            <div
+                                                className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                                                    msg.role === 'user'
+                                                        ? 'bg-teal-600/30 border border-teal-600/50 text-teal-100'
+                                                        : 'bg-slate-700 border border-slate-600 text-slate-200'
+                                                }`}
+                                            >
+                                                {msg.content}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {isPreChecking && (
+                                        <div className="flex justify-start">
+                                            <div className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5">
+                                                <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div ref={chatEndRef} />
+                                </div>
+
+                                {/* 入力欄 */}
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={userInput}
+                                        onChange={(e) => setUserInput(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPreCheckMessage() } }}
+                                        placeholder="回答を入力..."
+                                        className="flex-1 bg-slate-700 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        disabled={isPreChecking}
+                                    />
+                                    <button
+                                        onClick={sendPreCheckMessage}
+                                        disabled={!userInput.trim() || isPreChecking}
+                                        className="px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Send className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {/* リセット */}
+                                <button
+                                    onClick={() => { setPreCheckMessages([]); setUserInput('') }}
+                                    className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
+                                >
+                                    チャットをリセット
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+
             {/* 実行・進捗 */}
             <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                 <div className="flex items-center gap-4">
@@ -538,7 +724,7 @@ export default function DataValidator() {
                             className="flex items-center gap-2 px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                         >
                             <Play className="w-5 h-5" />
-                            検証開始
+                            検証開始{preCheckMessages.length === 0 ? '（事前確認スキップ）' : ''}
                         </button>
                     ) : (
                         <button
