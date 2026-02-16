@@ -52,6 +52,7 @@ interface PreCheckResponse {
     message: string
     questions: PreCheckQuestion[]
     ready: boolean
+    pdfExtract: string
 }
 
 // --- プロンプトテンプレート ---
@@ -121,6 +122,7 @@ export default function DataValidator() {
     const [currentQuestions, setCurrentQuestions] = useState<PreCheckQuestion[]>([])
     const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({})
     const [preCheckSummary, setPreCheckSummary] = useState('')
+    const [pdfExtract, setPdfExtract] = useState('')
 
     // --- CSV解析 ---
     const parseCSV = useCallback((text: string) => {
@@ -244,6 +246,7 @@ export default function DataValidator() {
             if (data.ready) {
                 setPreCheckReady(true)
                 setPreCheckSummary(data.message)
+                if (data.pdfExtract) setPdfExtract(data.pdfExtract)
                 setCurrentQuestions([])
             } else {
                 setCurrentQuestions(data.questions)
@@ -261,6 +264,7 @@ export default function DataValidator() {
         setPreCheckMessages([])
         setPreCheckReady(false)
         setPreCheckSummary('')
+        setPdfExtract('')
         callPreCheck([])
     }, [csvRows, prompt, callPreCheck])
 
@@ -310,12 +314,7 @@ export default function DataValidator() {
 
             // バッチ間ディレイ（レートリミット対策）
             if (batchIdx > 0) {
-                await new Promise(resolve => setTimeout(resolve, 15000))
-            } else if (preCheckSummary) {
-                // 事前確認直後はレートリミット枠を回復させる
-                setError('事前確認後の待機中（60秒）...')
-                await new Promise(resolve => setTimeout(resolve, 60000))
-                setError(null)
+                await new Promise(resolve => setTimeout(resolve, 5000))
             }
 
             let retries = 0
@@ -333,7 +332,9 @@ export default function DataValidator() {
                             headers: csvHeaders,
                             prompt,
                             mode,
-                            pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
+                            // PDF抽出済みならPDF本体は送らない（トークン節約）
+                            pdfBase64: mode === 'pdf' && !pdfExtract ? pdfBase64 : undefined,
+                            pdfExtract: pdfExtract || undefined,
                             model,
                             preCheckContext: buildPreCheckContext(),
                         }),
@@ -390,7 +391,7 @@ export default function DataValidator() {
         }
 
         setIsRunning(false)
-    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, batchSize, model, buildPreCheckContext])
+    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, pdfExtract, batchSize, model, buildPreCheckContext])
 
     const stopValidation = useCallback(() => {
         abortRef.current = true
@@ -759,6 +760,7 @@ export default function DataValidator() {
                                     setPreCheckMessages([])
                                     setPreCheckReady(false)
                                     setPreCheckSummary('')
+                                    setPdfExtract('')
                                     setCurrentQuestions([])
                                     setQuestionAnswers({})
                                 }}

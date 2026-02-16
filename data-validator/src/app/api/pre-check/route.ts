@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
             `行${i + 1}: ${row.join(' | ')}`
         ).join('\n')
 
+        const isPdf = mode === 'pdf' && pdfBase64
+
         const systemPrompt = `あなたはデータ検証の準備をしている専門家です。
 
 ユーザーがテーブルデータ（CSV/Excelからインポートされた表形式データ）の検証をAIに依頼しようとしています。
@@ -56,12 +58,14 @@ export async function POST(request: NextRequest) {
     { "id": "q1", "question": "質問内容" },
     { "id": "q2", "question": "質問内容" }
   ],
-  "ready": false
+  "ready": false,
+  "pdfExtract": "（PDFモード時のみ）PDFから読み取った全データをテキスト形式で記載"
 }
 
 - questions: 確認したい質問のリスト。質問がなければ空配列。
 - ready: すべて明確で検証開始できる状態ならtrue、まだ確認が必要ならfalse。
 - readyがtrueの場合、messageに検証方針の要約を記載してください。
+${isPdf ? `- pdfExtract: 【PDF照合モード・非常に重要】readyがtrueの場合、PDFから読み取った全データ（数値・テキスト・表）を省略なくテキスト形式で記載してください。このテキストが後続の検証で原本データとして使用されます。PDFの内容を正確かつ網羅的に抽出してください。` : '- pdfExtract: 空文字で構いません。'}
 
 回答は日本語でお願いします。`
 
@@ -69,7 +73,7 @@ export async function POST(request: NextRequest) {
         const buildFirstContent = (): Anthropic.ContentBlockParam[] => {
             const content: Anthropic.ContentBlockParam[] = []
 
-            if (mode === 'pdf' && pdfBase64) {
+            if (isPdf) {
                 content.push({
                     type: 'document',
                     source: {
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
 ${prompt}
 
 ## 検証モード
-${mode === 'pdf' && pdfBase64 ? 'PDF原本との照合（※上記に添付されたPDFが照合対象の原本です）' : 'Web検索で事実確認'}
+${isPdf ? 'PDF原本との照合（※上記に添付されたPDFが照合対象の原本です）' : 'Web検索で事実確認'}
 
 ## データ（サンプル ${sampleRows.length}行 / 全体はもっと多い可能性あり）
 
@@ -114,7 +118,7 @@ ${tableRows}`,
 
         const response = await client.messages.create({
             model: model || 'claude-sonnet-4-5-20250929',
-            max_tokens: 1024,
+            max_tokens: 8192,
             system: systemPrompt,
             messages: apiMessages,
         })
@@ -146,6 +150,7 @@ ${tableRows}`,
                 message: parsed.message || '',
                 questions: parsed.questions || [],
                 ready: parsed.ready || false,
+                pdfExtract: parsed.pdfExtract || '',
             })
         } catch {
             // JSONパース失敗時はフォールバック
@@ -153,13 +158,18 @@ ${tableRows}`,
                 message: textBlock.text,
                 questions: [],
                 ready: false,
+                pdfExtract: '',
             })
         }
     } catch (error) {
         console.error('Pre-check error:', error)
+
+        const errMsg = error instanceof Error ? error.message : '不明なエラー'
+        const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429 : 500
+
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : '不明なエラー' },
-            { status: 500 }
+            { error: errMsg },
+            { status }
         )
     }
 }

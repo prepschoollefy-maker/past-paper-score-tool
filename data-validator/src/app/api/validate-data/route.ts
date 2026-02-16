@@ -9,6 +9,7 @@ interface ValidateRequest {
     pdfBase64?: string
     model: string
     preCheckContext?: string
+    pdfExtract?: string
 }
 
 interface ValidationResult {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body: ValidateRequest = await request.json()
-        const { rows, headers, prompt, mode, pdfBase64, model, preCheckContext } = body
+        const { rows, headers, prompt, mode, pdfBase64, model, preCheckContext, pdfExtract } = body
 
         if (!rows || rows.length === 0) {
             return NextResponse.json(
@@ -78,20 +79,29 @@ export async function POST(request: NextRequest) {
         // メッセージコンテンツを構築
         const userContent: Anthropic.ContentBlockParam[] = []
 
-        // PDFモードの場合、PDFを添付
-        if (mode === 'pdf' && pdfBase64) {
-            userContent.push({
-                type: 'document',
-                source: {
-                    type: 'base64',
-                    media_type: 'application/pdf',
-                    data: pdfBase64,
-                },
-            })
-            userContent.push({
-                type: 'text',
-                text: `## 検証指示\n${prompt}\n\n上記のPDFは原本データです。以下のデータがPDFの内容と一致しているか照合してください。\n\n${dataText}`,
-            })
+        // PDFモードの処理
+        if (mode === 'pdf') {
+            if (pdfExtract) {
+                // 事前確認でPDFデータ抽出済み → PDFを送らずテキストで照合（トークン節約）
+                userContent.push({
+                    type: 'text',
+                    text: `## 検証指示\n${prompt}\n\n## 原本データ（PDFから抽出済み）\n${pdfExtract}\n\n上記の原本データと以下のデータを照合してください。\n\n${dataText}`,
+                })
+            } else if (pdfBase64) {
+                // 事前確認なし → 従来通りPDFを添付
+                userContent.push({
+                    type: 'document',
+                    source: {
+                        type: 'base64',
+                        media_type: 'application/pdf',
+                        data: pdfBase64,
+                    },
+                })
+                userContent.push({
+                    type: 'text',
+                    text: `## 検証指示\n${prompt}\n\n上記のPDFは原本データです。以下のデータがPDFの内容と一致しているか照合してください。\n\n${dataText}`,
+                })
+            }
         } else {
             userContent.push({
                 type: 'text',
