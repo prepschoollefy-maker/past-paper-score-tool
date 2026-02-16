@@ -147,58 +147,86 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
             ]
         }
 
-        const response = await client.messages.create(messageParams)
+        // ストリーミングレスポンスでVercelタイムアウトを回避
+        const encoder = new TextEncoder()
+        const readable = new ReadableStream({
+            async start(controller) {
+                const heartbeat = setInterval(() => {
+                    try { controller.enqueue(encoder.encode(' ')) } catch { /* stream closed */ }
+                }, 5000)
 
-        // レスポンスからテキストを抽出
-        const textBlock = response.content.find(
-            (block): block is Anthropic.TextBlock => block.type === 'text'
-        )
+                try {
+                    const response = await client.messages.create(messageParams)
 
-        if (!textBlock) {
-            return NextResponse.json(
-                { error: 'AIからのレスポンスにテキストが含まれていませんでした' },
-                { status: 500 }
-            )
-        }
+                    clearInterval(heartbeat)
 
-        // JSONをパース
-        let results: ValidationResult[]
-        try {
-            // JSONブロックを抽出（```json ... ``` で囲まれている場合も対応）
-            let jsonText = textBlock.text.trim()
-            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-            if (jsonMatch) {
-                jsonText = jsonMatch[1].trim()
+                    // レスポンスからテキストを抽出
+                    const textBlock = response.content.find(
+                        (block): block is Anthropic.TextBlock => block.type === 'text'
+                    )
+
+                    if (!textBlock) {
+                        controller.enqueue(encoder.encode(JSON.stringify({
+                            error: 'AIからのレスポンスにテキストが含まれていませんでした',
+                        })))
+                        controller.close()
+                        return
+                    }
+
+                    // JSONをパース
+                    let results: ValidationResult[]
+                    try {
+                        let jsonText = textBlock.text.trim()
+                        const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
+                        if (jsonMatch) {
+                            jsonText = jsonMatch[1].trim()
+                        }
+                        const firstBrace = jsonText.indexOf('{')
+                        if (firstBrace > 0) {
+                            jsonText = jsonText.substring(firstBrace)
+                        }
+                        const parsed = JSON.parse(jsonText)
+                        results = parsed.results || parsed
+                    } catch {
+                        controller.enqueue(encoder.encode(JSON.stringify({
+                            results: rows.map((_, i) => ({
+                                rowIndex: i,
+                                status: 'WARN' as const,
+                                details: `AIレスポンスの解析に失敗しました。生テキスト: ${textBlock.text.substring(0, 200)}...`,
+                            })),
+                        })))
+                        controller.close()
+                        return
+                    }
+
+                    // correctionsのcolumnIndexを解決
+                    const headerIndexMap = new Map(headers.map((h, i) => [h, i]))
+                    for (const r of results) {
+                        if (r.corrections) {
+                            r.corrections = r.corrections
+                                .map(c => ({ ...c, columnIndex: headerIndexMap.get(c.column) ?? -1 }))
+                                .filter(c => c.columnIndex >= 0)
+                        }
+                    }
+
+                    controller.enqueue(encoder.encode(JSON.stringify({ results })))
+                    controller.close()
+                } catch (error) {
+                    clearInterval(heartbeat)
+                    const errMsg = error instanceof Error ? error.message : '不明なエラー'
+                    const isRateLimit = errMsg.includes('rate_limit') || errMsg.includes('429')
+                    controller.enqueue(encoder.encode(JSON.stringify({
+                        error: errMsg,
+                        status: isRateLimit ? 429 : 500,
+                    })))
+                    controller.close()
+                }
             }
-            // { で始まらない場合、最初の { を探す
-            const firstBrace = jsonText.indexOf('{')
-            if (firstBrace > 0) {
-                jsonText = jsonText.substring(firstBrace)
-            }
-            const parsed = JSON.parse(jsonText)
-            results = parsed.results || parsed
-        } catch {
-            // JSONパースに失敗した場合、テキストをそのまま返す
-            return NextResponse.json({
-                results: rows.map((_, i) => ({
-                    rowIndex: i,
-                    status: 'WARN' as const,
-                    details: `AIレスポンスの解析に失敗しました。生テキスト: ${textBlock.text.substring(0, 200)}...`,
-                })),
-            })
-        }
+        })
 
-        // correctionsのcolumnIndexを解決
-        const headerIndexMap = new Map(headers.map((h, i) => [h, i]))
-        for (const r of results) {
-            if (r.corrections) {
-                r.corrections = r.corrections
-                    .map(c => ({ ...c, columnIndex: headerIndexMap.get(c.column) ?? -1 }))
-                    .filter(c => c.columnIndex >= 0)
-            }
-        }
-
-        return NextResponse.json({ results })
+        return new Response(readable, {
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        })
     } catch (error) {
         console.error('Validate data error:', error)
 

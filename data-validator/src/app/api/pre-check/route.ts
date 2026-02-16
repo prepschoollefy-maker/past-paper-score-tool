@@ -118,51 +118,90 @@ ${tableRows}`,
             }
         }
 
-        const response = await client.messages.create({
-            model: model || 'claude-sonnet-4-5-20250929',
-            max_tokens: 8192,
-            system: systemPrompt,
-            messages: apiMessages,
+        // ストリーミングレスポンスでVercelタイムアウトを回避
+        // 最初の1バイト送信後はタイムアウト制限が解除される
+        const encoder = new TextEncoder()
+        const readable = new ReadableStream({
+            async start(controller) {
+                // ハートビートを5秒ごとに送信（接続維持）
+                const heartbeat = setInterval(() => {
+                    try { controller.enqueue(encoder.encode(' ')) } catch { /* stream closed */ }
+                }, 5000)
+
+                try {
+                    const response = await client.messages.create({
+                        model: model || 'claude-sonnet-4-5-20250929',
+                        max_tokens: 8192,
+                        system: systemPrompt,
+                        messages: apiMessages,
+                    })
+
+                    clearInterval(heartbeat)
+
+                    const textBlock = response.content.find(
+                        (block): block is Anthropic.TextBlock => block.type === 'text'
+                    )
+
+                    if (!textBlock) {
+                        controller.enqueue(encoder.encode(JSON.stringify({
+                            message: '',
+                            questions: [],
+                            ready: false,
+                            pdfExtract: '',
+                            error: 'AIからの応答がありませんでした',
+                        })))
+                        controller.close()
+                        return
+                    }
+
+                    // JSONパース
+                    let result
+                    try {
+                        let jsonText = textBlock.text.trim()
+                        const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
+                        if (jsonMatch) {
+                            jsonText = jsonMatch[1].trim()
+                        }
+                        const firstBrace = jsonText.indexOf('{')
+                        if (firstBrace > 0) {
+                            jsonText = jsonText.substring(firstBrace)
+                        }
+                        const parsed = JSON.parse(jsonText)
+                        result = {
+                            message: parsed.message || '',
+                            questions: parsed.questions || [],
+                            ready: parsed.ready || false,
+                            pdfExtract: parsed.pdfExtract || '',
+                        }
+                    } catch {
+                        result = {
+                            message: textBlock.text,
+                            questions: [],
+                            ready: false,
+                            pdfExtract: '',
+                        }
+                    }
+
+                    controller.enqueue(encoder.encode(JSON.stringify(result)))
+                    controller.close()
+                } catch (error) {
+                    clearInterval(heartbeat)
+                    const errMsg = error instanceof Error ? error.message : '不明なエラー'
+                    controller.enqueue(encoder.encode(JSON.stringify({
+                        message: '',
+                        questions: [],
+                        ready: false,
+                        pdfExtract: '',
+                        error: errMsg,
+                    })))
+                    controller.close()
+                }
+            }
         })
 
-        const textBlock = response.content.find(
-            (block): block is Anthropic.TextBlock => block.type === 'text'
-        )
-
-        if (!textBlock) {
-            return NextResponse.json(
-                { error: 'AIからの応答がありませんでした' },
-                { status: 500 }
-            )
-        }
-
-        // JSONパース
-        try {
-            let jsonText = textBlock.text.trim()
-            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-            if (jsonMatch) {
-                jsonText = jsonMatch[1].trim()
-            }
-            const firstBrace = jsonText.indexOf('{')
-            if (firstBrace > 0) {
-                jsonText = jsonText.substring(firstBrace)
-            }
-            const parsed = JSON.parse(jsonText)
-            return NextResponse.json({
-                message: parsed.message || '',
-                questions: parsed.questions || [],
-                ready: parsed.ready || false,
-                pdfExtract: parsed.pdfExtract || '',
-            })
-        } catch {
-            // JSONパース失敗時はフォールバック
-            return NextResponse.json({
-                message: textBlock.text,
-                questions: [],
-                ready: false,
-                pdfExtract: '',
-            })
-        }
+        return new Response(readable, {
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        })
     } catch (error) {
         console.error('Pre-check error:', error)
 

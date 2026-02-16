@@ -255,7 +255,13 @@ export default function DataValidator() {
                 return
             }
 
-            const data: PreCheckResponse = await res.json()
+            // ストリーミングレスポンス: ハートビート(空白) + JSON
+            const rawText = await res.text()
+            const data = JSON.parse(rawText.trim()) as PreCheckResponse & { error?: string }
+            if (data.error) {
+                setError(data.error)
+                return
+            }
 
             // AIの応答をJSON文字列として会話履歴に追加
             const assistantContent = JSON.stringify({
@@ -363,15 +369,6 @@ export default function DataValidator() {
                         }),
                     })
 
-                    if (res.status === 429 && retries < maxRetries) {
-                        retries++
-                        const waitSec = 30 * retries
-                        setError(`レートリミット - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
-                        await new Promise(resolve => setTimeout(resolve, waitSec * 1000))
-                        setError(null)
-                        continue
-                    }
-
                     if (!res.ok) {
                         let errMsg = `HTTP ${res.status}`
                         try {
@@ -381,6 +378,14 @@ export default function DataValidator() {
                             const text = await res.text().catch(() => '')
                             if (text) errMsg = text.slice(0, 200)
                         }
+                        if (res.status === 429 && retries < maxRetries) {
+                            retries++
+                            const waitSec = 30 * retries
+                            setError(`レートリミット - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
+                            await new Promise(resolve => setTimeout(resolve, waitSec * 1000))
+                            setError(null)
+                            continue
+                        }
                         setBatchResults(prev => [...prev, {
                             batchIndex: batchIdx,
                             results: [],
@@ -389,7 +394,28 @@ export default function DataValidator() {
                         break
                     }
 
-                    const data = await res.json()
+                    // ストリーミングレスポンス: ハートビート(空白) + JSON
+                    const rawText = await res.text()
+                    const data = JSON.parse(rawText.trim())
+
+                    // ストリーム内エラーチェック
+                    if (data.error) {
+                        const isRateLimit = data.status === 429
+                        if (isRateLimit && retries < maxRetries) {
+                            retries++
+                            const waitSec = 30 * retries
+                            setError(`レートリミット - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
+                            await new Promise(resolve => setTimeout(resolve, waitSec * 1000))
+                            setError(null)
+                            continue
+                        }
+                        setBatchResults(prev => [...prev, {
+                            batchIndex: batchIdx,
+                            results: [],
+                            error: data.error,
+                        }])
+                        break
+                    }
 
                     // rowIndexをグローバルインデックスに変換
                     const globalResults: ValidationResult[] = (data.results || []).map(
