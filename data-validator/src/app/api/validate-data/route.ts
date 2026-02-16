@@ -208,11 +208,13 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
                 } catch (error) {
                     const errMsg = error instanceof Error ? error.message : '不明なエラー'
                     const isRateLimit = errMsg.includes('rate_limit') || errMsg.includes('429')
-                    controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify({
-                        error: errMsg,
-                        status: isRateLimit ? 429 : 500,
-                    })))
-                    controller.close()
+                    try {
+                        controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify({
+                            error: errMsg,
+                            status: isRateLimit ? 429 : 500,
+                        })))
+                    } catch { /* controller already closed */ }
+                    try { controller.close() } catch { /* already closed */ }
                 }
             }
         })

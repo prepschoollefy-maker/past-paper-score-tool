@@ -175,8 +175,10 @@ ${tableRows}`,
                     controller.close()
                 } catch (error) {
                     const errMsg = error instanceof Error ? error.message : '不明なエラー'
-                    controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify({ error: errMsg })))
-                    controller.close()
+                    try {
+                        controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify({ error: errMsg })))
+                    } catch { /* controller already closed */ }
+                    try { controller.close() } catch { /* already closed */ }
                 }
             }
         })

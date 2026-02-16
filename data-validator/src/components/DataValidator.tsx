@@ -255,14 +255,40 @@ export default function DataValidator() {
                 return
             }
 
-            // ストリーミングレスポンス: Claudeトークン + \0区切り + 処理済みJSON
+            // ストリーミングレスポンス: Claudeトークン + __RESULT__区切り + 処理済みJSON
             const rawText = await res.text()
-            const sepIndex = rawText.lastIndexOf('\n__RESULT__\n')
-            if (sepIndex === -1) {
-                setError('AIからの応答の処理に失敗しました')
-                return
+            const RESULT_MARKER = '\n__RESULT__\n'
+            const sepIndex = rawText.lastIndexOf(RESULT_MARKER)
+
+            let data: PreCheckResponse & { error?: string }
+            if (sepIndex >= 0) {
+                data = JSON.parse(rawText.slice(sepIndex + RESULT_MARKER.length))
+            } else {
+                // フォールバック: 区切りなしの場合、生テキストから直接パース
+                const trimmed = rawText.trim()
+                if (!trimmed) {
+                    setError('AIからの応答がありませんでした')
+                    return
+                }
+                try {
+                    let jsonText = trimmed
+                    const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
+                    if (jsonMatch) jsonText = jsonMatch[1].trim()
+                    const firstBrace = jsonText.indexOf('{')
+                    if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
+                    const parsed = JSON.parse(jsonText)
+                    data = {
+                        message: parsed.message || '',
+                        questions: parsed.questions || [],
+                        ready: parsed.ready || false,
+                        pdfExtract: parsed.pdfExtract || '',
+                    }
+                } catch {
+                    setError(`AIレスポンスの解析に失敗しました: ${trimmed.slice(0, 100)}`)
+                    return
+                }
             }
-            const data = JSON.parse(rawText.slice(sepIndex + '\n__RESULT__\n'.length)) as PreCheckResponse & { error?: string }
+
             if (data.error) {
                 setError(data.error)
                 return
@@ -399,18 +425,42 @@ export default function DataValidator() {
                         break
                     }
 
-                    // ストリーミングレスポンス: Claudeトークン + \0区切り + 処理済みJSON
+                    // ストリーミングレスポンス: Claudeトークン + __RESULT__区切り + 処理済みJSON
                     const rawText = await res.text()
-                    const sepIndex = rawText.lastIndexOf('\n__RESULT__\n')
-                    if (sepIndex === -1) {
-                        setBatchResults(prev => [...prev, {
-                            batchIndex: batchIdx,
-                            results: [],
-                            error: 'AIからの応答の処理に失敗しました',
-                        }])
-                        break
+                    const RESULT_MARKER = '\n__RESULT__\n'
+                    const sepIndex = rawText.lastIndexOf(RESULT_MARKER)
+
+                    let data: { results?: ValidationResult[]; error?: string; status?: number }
+                    if (sepIndex >= 0) {
+                        data = JSON.parse(rawText.slice(sepIndex + RESULT_MARKER.length))
+                    } else {
+                        // フォールバック: 区切りなしの場合、生テキストから直接パース
+                        const trimmed = rawText.trim()
+                        if (!trimmed) {
+                            setBatchResults(prev => [...prev, {
+                                batchIndex: batchIdx,
+                                results: [],
+                                error: 'AIからの応答がありませんでした',
+                            }])
+                            break
+                        }
+                        try {
+                            let jsonText = trimmed
+                            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
+                            if (jsonMatch) jsonText = jsonMatch[1].trim()
+                            const firstBrace = jsonText.indexOf('{')
+                            if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
+                            const parsed = JSON.parse(jsonText)
+                            data = { results: parsed.results || parsed }
+                        } catch {
+                            setBatchResults(prev => [...prev, {
+                                batchIndex: batchIdx,
+                                results: [],
+                                error: `AIレスポンスの解析に失敗: ${trimmed.slice(0, 100)}`,
+                            }])
+                            break
+                        }
                     }
-                    const data = JSON.parse(rawText.slice(sepIndex + '\n__RESULT__\n'.length))
 
                     // ストリーム内エラーチェック
                     if (data.error) {
