@@ -203,7 +203,6 @@ export default function DataValidator() {
         if (template.prompt) {
             setPrompt(template.prompt)
         }
-        setMode(template.mode)
     }, [])
 
     // --- 事前確認 ---
