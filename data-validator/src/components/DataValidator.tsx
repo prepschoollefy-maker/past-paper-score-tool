@@ -217,7 +217,7 @@ export default function DataValidator() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     headers: csvHeaders,
-                    sampleRows: csvRows.slice(0, 5),
+                    sampleRows: csvRows.slice(0, 100),
                     prompt,
                     mode,
                     pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
