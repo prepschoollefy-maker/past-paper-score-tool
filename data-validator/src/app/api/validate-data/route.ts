@@ -41,15 +41,15 @@ export async function POST(request: NextRequest) {
 
         const client = new Anthropic({ apiKey })
 
-        // CSVデータをテーブル形式に整形
+        // データをテーブル形式に整形
         const tableHeader = headers.join(' | ')
         const tableRows = rows.map((row, i) =>
             `行${i + 1}: ${row.join(' | ')}`
         ).join('\n')
 
-        const dataText = `## CSVデータ（${rows.length}件）\n\nヘッダー: ${tableHeader}\n\n${tableRows}`
+        const dataText = `## データ（${rows.length}件）\n\nヘッダー: ${tableHeader}\n\n${tableRows}`
 
-        const systemPrompt = `あなたはデータ検証の専門家です。与えられたCSVデータの各行について、ユーザーの指示に従って正確性を確認してください。
+        const systemPrompt = `あなたはデータ検証の専門家です。与えられたデータの各行について、ユーザーの指示に従って正確性を確認してください。
 
 必ず以下のJSON形式で結果を返してください。JSON以外のテキストは含めないでください。
 
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
             })
             userContent.push({
                 type: 'text',
-                text: `上記のPDFは原本データです。以下のCSVデータがPDFの内容と一致しているか照合してください。\n\n${dataText}\n\n## 検証指示\n${prompt}`,
+                text: `上記のPDFは原本データです。以下のデータがPDFの内容と一致しているか照合してください。\n\n${dataText}\n\n## 検証指示\n${prompt}`,
             })
         } else {
             userContent.push({

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
         const systemPrompt = `あなたはデータ検証の準備をしている専門家です。
 
-ユーザーがCSVデータの検証をAIに依頼しようとしています。
+ユーザーがテーブルデータ（CSV/Excelからインポートされた表形式データ）の検証をAIに依頼しようとしています。
 検証を正確に行うために、以下を確認してください：
 
 1. データの内容と各列の意味を正しく理解できているか
@@ -76,9 +76,9 @@ export async function POST(request: NextRequest) {
 
             content.push({
                 type: 'text',
-                text: `以下のCSVデータの検証を依頼します。事前に確認・質問があればお願いします。
+                text: `以下のデータの検証を依頼します。事前に確認・質問があればお願いします。
 
-## CSVデータ（サンプル ${sampleRows.length}行 / 全体はもっと多い可能性あり）
+## データ（サンプル ${sampleRows.length}行 / 全体はもっと多い可能性あり）
 
 ヘッダー: ${tableHeader}
 
