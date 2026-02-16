@@ -310,7 +310,12 @@ export default function DataValidator() {
 
             // バッチ間ディレイ（レートリミット対策）
             if (batchIdx > 0) {
-                await new Promise(resolve => setTimeout(resolve, 10000))
+                await new Promise(resolve => setTimeout(resolve, 15000))
+            } else if (preCheckSummary) {
+                // 事前確認直後はレートリミット枠を回復させる
+                setError('事前確認後の待機中（60秒）...')
+                await new Promise(resolve => setTimeout(resolve, 60000))
+                setError(null)
             }
 
             let retries = 0

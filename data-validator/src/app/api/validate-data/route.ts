@@ -162,9 +162,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ results })
     } catch (error) {
         console.error('Validate data error:', error)
+
+        // Anthropic SDKのレートリミットエラーを429として返す
+        const errMsg = error instanceof Error ? error.message : '不明なエラー'
+        const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429 : 500
+
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : '不明なエラー' },
-            { status: 500 }
+            { error: errMsg },
+            { status }
         )
     }
 }
