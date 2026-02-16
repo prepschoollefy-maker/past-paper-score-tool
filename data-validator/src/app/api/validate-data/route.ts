@@ -90,12 +90,12 @@ export async function POST(request: NextRequest) {
             })
             userContent.push({
                 type: 'text',
-                text: `上記のPDFは原本データです。以下のデータがPDFの内容と一致しているか照合してください。\n\n${dataText}\n\n## 検証指示\n${prompt}`,
+                text: `## 検証指示\n${prompt}\n\n上記のPDFは原本データです。以下のデータがPDFの内容と一致しているか照合してください。\n\n${dataText}`,
             })
         } else {
             userContent.push({
                 type: 'text',
-                text: `${dataText}\n\n## 検証指示\n${prompt}`,
+                text: `## 検証指示\n${prompt}\n\n${dataText}`,
             })
         }
 

@@ -78,17 +78,17 @@ export async function POST(request: NextRequest) {
                 type: 'text',
                 text: `以下のデータの検証を依頼します。事前に確認・質問があればお願いします。
 
-## データ（サンプル ${sampleRows.length}行 / 全体はもっと多い可能性あり）
-
-ヘッダー: ${tableHeader}
-
-${tableRows}
+## 検証プロンプト（最重要：この内容に基づいて質問してください）
+${prompt}
 
 ## 検証モード
 ${mode === 'pdf' && pdfBase64 ? 'PDF原本との照合（※上記に添付されたPDFが照合対象の原本です）' : 'Web検索で事実確認'}
 
-## 検証プロンプト
-${prompt}`,
+## データ（サンプル ${sampleRows.length}行 / 全体はもっと多い可能性あり）
+
+ヘッダー: ${tableHeader}
+
+${tableRows}`,
             })
 
             return content

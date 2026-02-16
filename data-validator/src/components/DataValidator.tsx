@@ -327,51 +327,79 @@ export default function DataValidator() {
 
             setCurrentBatch(batchIdx + 1)
 
-            try {
-                const res = await fetch('/api/validate-data', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        rows: batches[batchIdx],
-                        headers: csvHeaders,
-                        prompt,
-                        mode,
-                        pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
-                        model,
-                        preCheckContext: buildPreCheckContext(),
-                    }),
-                })
+            // バッチ間ディレイ（レートリミット対策）
+            if (batchIdx > 0) {
+                await new Promise(resolve => setTimeout(resolve, 3000))
+            }
 
-                if (!res.ok) {
-                    const errData = await res.json()
+            let retries = 0
+            const maxRetries = 3
+
+            while (retries <= maxRetries) {
+                if (abortRef.current) break
+
+                try {
+                    const res = await fetch('/api/validate-data', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            rows: batches[batchIdx],
+                            headers: csvHeaders,
+                            prompt,
+                            mode,
+                            pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
+                            model,
+                            preCheckContext: buildPreCheckContext(),
+                        }),
+                    })
+
+                    if (res.status === 429 && retries < maxRetries) {
+                        retries++
+                        const waitSec = 30 * retries
+                        setError(`レートリミット - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
+                        await new Promise(resolve => setTimeout(resolve, waitSec * 1000))
+                        setError(null)
+                        continue
+                    }
+
+                    if (!res.ok) {
+                        const errData = await res.json()
+                        setBatchResults(prev => [...prev, {
+                            batchIndex: batchIdx,
+                            results: [],
+                            error: errData.error || `HTTP ${res.status}`,
+                        }])
+                        break
+                    }
+
+                    const data = await res.json()
+
+                    // rowIndexをグローバルインデックスに変換
+                    const globalResults: ValidationResult[] = (data.results || []).map(
+                        (r: ValidationResult) => ({
+                            ...r,
+                            rowIndex: batchIdx * batchSize + r.rowIndex,
+                        })
+                    )
+
+                    setBatchResults(prev => [...prev, {
+                        batchIndex: batchIdx,
+                        results: globalResults,
+                    }])
+                    break
+                } catch (err) {
+                    if (retries < maxRetries) {
+                        retries++
+                        await new Promise(resolve => setTimeout(resolve, 10000))
+                        continue
+                    }
                     setBatchResults(prev => [...prev, {
                         batchIndex: batchIdx,
                         results: [],
-                        error: errData.error || `HTTP ${res.status}`,
+                        error: err instanceof Error ? err.message : '通信エラー',
                     }])
-                    continue
+                    break
                 }
-
-                const data = await res.json()
-
-                // rowIndexをグローバルインデックスに変換
-                const globalResults: ValidationResult[] = (data.results || []).map(
-                    (r: ValidationResult) => ({
-                        ...r,
-                        rowIndex: batchIdx * batchSize + r.rowIndex,
-                    })
-                )
-
-                setBatchResults(prev => [...prev, {
-                    batchIndex: batchIdx,
-                    results: globalResults,
-                }])
-            } catch (err) {
-                setBatchResults(prev => [...prev, {
-                    batchIndex: batchIdx,
-                    results: [],
-                    error: err instanceof Error ? err.message : '通信エラー',
-                }])
             }
         }
 
