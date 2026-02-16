@@ -101,13 +101,11 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
         // PDFモードの処理
         if (mode === 'pdf') {
             if (pdfExtract) {
-                // 事前確認でPDFデータ抽出済み → PDFを送らずテキストで照合（トークン節約）
                 userContent.push({
                     type: 'text',
                     text: `## 検証指示\n${prompt}\n\n## 原本データ（PDFから抽出済み）\n${pdfExtract}\n\n上記の原本データと以下のデータを照合してください。\n\n${dataText}`,
                 })
             } else if (pdfBase64) {
-                // 事前確認なし → 従来通りPDFを添付
                 userContent.push({
                     type: 'document',
                     source: {
@@ -128,8 +126,8 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
             })
         }
 
-        // Claude API呼出
-        const messageParams: Anthropic.MessageCreateParams = {
+        // Claude API呼出パラメータ
+        const streamParams: Anthropic.MessageCreateParamsNonStreaming = {
             model: model || 'claude-sonnet-4-5-20250929',
             max_tokens: 8192,
             system: systemPrompt + preCheckSection,
@@ -138,7 +136,8 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
 
         // Webモードの場合、web_searchツールを有効化
         if (mode === 'web') {
-            messageParams.tools = [
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (streamParams as any).tools = [
                 {
                     type: 'web_search_20250305',
                     name: 'web_search',
@@ -147,75 +146,69 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
             ]
         }
 
-        // ストリーミングレスポンスでVercelタイムアウトを回避
+        // Claude Streaming APIで実際のトークンを流し、Vercelタイムアウトを回避
+        const messageStream = client.messages.stream(streamParams)
+
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                const heartbeat = setInterval(() => {
-                    try { controller.enqueue(encoder.encode(' ')) } catch { /* stream closed */ }
-                }, 5000)
+                let fullText = ''
 
                 try {
-                    const response = await client.messages.create(messageParams)
-
-                    clearInterval(heartbeat)
-
-                    // レスポンスからテキストを抽出
-                    const textBlock = response.content.find(
-                        (block): block is Anthropic.TextBlock => block.type === 'text'
-                    )
-
-                    if (!textBlock) {
-                        controller.enqueue(encoder.encode(JSON.stringify({
-                            error: 'AIからのレスポンスにテキストが含まれていませんでした',
-                        })))
-                        controller.close()
-                        return
-                    }
-
-                    // JSONをパース
-                    let results: ValidationResult[]
-                    try {
-                        let jsonText = textBlock.text.trim()
-                        const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-                        if (jsonMatch) {
-                            jsonText = jsonMatch[1].trim()
-                        }
-                        const firstBrace = jsonText.indexOf('{')
-                        if (firstBrace > 0) {
-                            jsonText = jsonText.substring(firstBrace)
-                        }
-                        const parsed = JSON.parse(jsonText)
-                        results = parsed.results || parsed
-                    } catch {
-                        controller.enqueue(encoder.encode(JSON.stringify({
-                            results: rows.map((_, i) => ({
-                                rowIndex: i,
-                                status: 'WARN' as const,
-                                details: `AIレスポンスの解析に失敗しました。生テキスト: ${textBlock.text.substring(0, 200)}...`,
-                            })),
-                        })))
-                        controller.close()
-                        return
-                    }
-
-                    // correctionsのcolumnIndexを解決
-                    const headerIndexMap = new Map(headers.map((h, i) => [h, i]))
-                    for (const r of results) {
-                        if (r.corrections) {
-                            r.corrections = r.corrections
-                                .map(c => ({ ...c, columnIndex: headerIndexMap.get(c.column) ?? -1 }))
-                                .filter(c => c.columnIndex >= 0)
+                    for await (const event of messageStream) {
+                        if (
+                            event.type === 'content_block_delta' &&
+                            event.delta.type === 'text_delta'
+                        ) {
+                            fullText += event.delta.text
+                            controller.enqueue(encoder.encode(event.delta.text))
+                        } else {
+                            controller.enqueue(encoder.encode(' '))
                         }
                     }
 
-                    controller.enqueue(encoder.encode(JSON.stringify({ results })))
+                    // ストリーム完了: 結果を処理
+                    let result
+                    if (!fullText.trim()) {
+                        result = { error: 'AIからのレスポンスにテキストが含まれていませんでした' }
+                    } else {
+                        try {
+                            let jsonText = fullText.trim()
+                            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
+                            if (jsonMatch) jsonText = jsonMatch[1].trim()
+                            const firstBrace = jsonText.indexOf('{')
+                            if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
+                            const parsed = JSON.parse(jsonText)
+                            let results: ValidationResult[] = parsed.results || parsed
+
+                            // correctionsのcolumnIndexを解決
+                            const headerIndexMap = new Map(headers.map((h, i) => [h, i]))
+                            for (const r of results) {
+                                if (r.corrections) {
+                                    r.corrections = r.corrections
+                                        .map(c => ({ ...c, columnIndex: headerIndexMap.get(c.column) ?? -1 }))
+                                        .filter(c => c.columnIndex >= 0)
+                                }
+                            }
+
+                            result = { results }
+                        } catch {
+                            result = {
+                                results: rows.map((_, i) => ({
+                                    rowIndex: i,
+                                    status: 'WARN' as const,
+                                    details: `AIレスポンスの解析に失敗しました。生テキスト: ${fullText.substring(0, 200)}...`,
+                                })),
+                            }
+                        }
+                    }
+
+                    controller.enqueue(encoder.encode('\0' + JSON.stringify(result)))
                     controller.close()
                 } catch (error) {
-                    clearInterval(heartbeat)
                     const errMsg = error instanceof Error ? error.message : '不明なエラー'
                     const isRateLimit = errMsg.includes('rate_limit') || errMsg.includes('429')
-                    controller.enqueue(encoder.encode(JSON.stringify({
+                    controller.enqueue(encoder.encode('\0' + JSON.stringify({
                         error: errMsg,
                         status: isRateLimit ? 429 : 500,
                     })))
@@ -225,18 +218,16 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
         })
 
         return new Response(readable, {
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            headers: {
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'Cache-Control': 'no-cache, no-transform',
+                'X-Accel-Buffering': 'no',
+            },
         })
     } catch (error) {
         console.error('Validate data error:', error)
-
-        // Anthropic SDKのレートリミットエラーを429として返す
         const errMsg = error instanceof Error ? error.message : '不明なエラー'
         const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429 : 500
-
-        return NextResponse.json(
-            { error: errMsg },
-            { status }
-        )
+        return NextResponse.json({ error: errMsg }, { status })
     }
 }

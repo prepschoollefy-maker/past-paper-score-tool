@@ -107,110 +107,91 @@ ${tableRows}`,
         }
 
         const apiMessages: Anthropic.MessageParam[] = []
-
-        // 初回メッセージ
         apiMessages.push({ role: 'user', content: buildFirstContent() })
 
-        // 継続会話の場合、履歴を追加
         if (messages.length > 0) {
             for (const msg of messages) {
                 apiMessages.push({ role: msg.role, content: msg.content })
             }
         }
 
-        // ストリーミングレスポンスでVercelタイムアウトを回避
-        // 最初の1バイト送信後はタイムアウト制限が解除される
+        // Claude Streaming APIで実際のトークンを流し、Vercelタイムアウトを回避
+        const messageStream = client.messages.stream({
+            model: model || 'claude-sonnet-4-5-20250929',
+            max_tokens: 8192,
+            system: systemPrompt,
+            messages: apiMessages,
+        })
+
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                // ハートビートを5秒ごとに送信（接続維持）
-                const heartbeat = setInterval(() => {
-                    try { controller.enqueue(encoder.encode(' ')) } catch { /* stream closed */ }
-                }, 5000)
+                let fullText = ''
 
                 try {
-                    const response = await client.messages.create({
-                        model: model || 'claude-sonnet-4-5-20250929',
-                        max_tokens: 8192,
-                        system: systemPrompt,
-                        messages: apiMessages,
-                    })
-
-                    clearInterval(heartbeat)
-
-                    const textBlock = response.content.find(
-                        (block): block is Anthropic.TextBlock => block.type === 'text'
-                    )
-
-                    if (!textBlock) {
-                        controller.enqueue(encoder.encode(JSON.stringify({
-                            message: '',
-                            questions: [],
-                            ready: false,
-                            pdfExtract: '',
-                            error: 'AIからの応答がありませんでした',
-                        })))
-                        controller.close()
-                        return
+                    for await (const event of messageStream) {
+                        if (
+                            event.type === 'content_block_delta' &&
+                            event.delta.type === 'text_delta'
+                        ) {
+                            fullText += event.delta.text
+                            controller.enqueue(encoder.encode(event.delta.text))
+                        } else {
+                            // 非テキストイベントでも接続維持のためデータを送る
+                            controller.enqueue(encoder.encode(' '))
+                        }
                     }
 
-                    // JSONパース
+                    // ストリーム完了: テキストを解析して処理済み結果を追加
                     let result
-                    try {
-                        let jsonText = textBlock.text.trim()
-                        const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-                        if (jsonMatch) {
-                            jsonText = jsonMatch[1].trim()
-                        }
-                        const firstBrace = jsonText.indexOf('{')
-                        if (firstBrace > 0) {
-                            jsonText = jsonText.substring(firstBrace)
-                        }
-                        const parsed = JSON.parse(jsonText)
-                        result = {
-                            message: parsed.message || '',
-                            questions: parsed.questions || [],
-                            ready: parsed.ready || false,
-                            pdfExtract: parsed.pdfExtract || '',
-                        }
-                    } catch {
-                        result = {
-                            message: textBlock.text,
-                            questions: [],
-                            ready: false,
-                            pdfExtract: '',
+                    if (!fullText.trim()) {
+                        result = { error: 'AIからの応答がありませんでした' }
+                    } else {
+                        try {
+                            let jsonText = fullText.trim()
+                            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
+                            if (jsonMatch) jsonText = jsonMatch[1].trim()
+                            const firstBrace = jsonText.indexOf('{')
+                            if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
+                            const parsed = JSON.parse(jsonText)
+                            result = {
+                                message: parsed.message || '',
+                                questions: parsed.questions || [],
+                                ready: parsed.ready || false,
+                                pdfExtract: parsed.pdfExtract || '',
+                            }
+                        } catch {
+                            result = {
+                                message: fullText,
+                                questions: [],
+                                ready: false,
+                                pdfExtract: '',
+                            }
                         }
                     }
 
-                    controller.enqueue(encoder.encode(JSON.stringify(result)))
+                    // \0 区切り + 処理済みJSON
+                    controller.enqueue(encoder.encode('\0' + JSON.stringify(result)))
                     controller.close()
                 } catch (error) {
-                    clearInterval(heartbeat)
                     const errMsg = error instanceof Error ? error.message : '不明なエラー'
-                    controller.enqueue(encoder.encode(JSON.stringify({
-                        message: '',
-                        questions: [],
-                        ready: false,
-                        pdfExtract: '',
-                        error: errMsg,
-                    })))
+                    controller.enqueue(encoder.encode('\0' + JSON.stringify({ error: errMsg })))
                     controller.close()
                 }
             }
         })
 
         return new Response(readable, {
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            headers: {
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'Cache-Control': 'no-cache, no-transform',
+                'X-Accel-Buffering': 'no',
+            },
         })
     } catch (error) {
         console.error('Pre-check error:', error)
-
         const errMsg = error instanceof Error ? error.message : '不明なエラー'
         const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429 : 500
-
-        return NextResponse.json(
-            { error: errMsg },
-            { status }
-        )
+        return NextResponse.json({ error: errMsg }, { status })
     }
 }
