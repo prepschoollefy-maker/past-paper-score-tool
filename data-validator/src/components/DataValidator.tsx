@@ -16,7 +16,6 @@ import {
     X,
     MessageCircle,
     Send,
-    SkipForward,
 } from 'lucide-react'
 import { downloadExcel } from '@/lib/excelExport'
 import ExcelJS from 'exceljs'
@@ -42,6 +41,17 @@ type FilterStatus = 'ALL' | 'OK' | 'NG' | 'WARN'
 interface ChatMessage {
     role: 'user' | 'assistant'
     content: string
+}
+
+interface PreCheckQuestion {
+    id: string
+    question: string
+}
+
+interface PreCheckResponse {
+    message: string
+    questions: PreCheckQuestion[]
+    ready: boolean
 }
 
 // --- プロンプトテンプレート ---
@@ -104,11 +114,13 @@ export default function DataValidator() {
     // 結果フィルター
     const [filter, setFilter] = useState<FilterStatus>('ALL')
 
-    // 事前確認チャット
+    // 事前確認
     const [preCheckMessages, setPreCheckMessages] = useState<ChatMessage[]>([])
     const [isPreChecking, setIsPreChecking] = useState(false)
-    const [userInput, setUserInput] = useState('')
-    const chatEndRef = useRef<HTMLDivElement>(null)
+    const [preCheckReady, setPreCheckReady] = useState(false)
+    const [currentQuestions, setCurrentQuestions] = useState<PreCheckQuestion[]>([])
+    const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({})
+    const [preCheckSummary, setPreCheckSummary] = useState('')
 
     // --- CSV解析 ---
     const parseCSV = useCallback((text: string) => {
@@ -194,9 +206,8 @@ export default function DataValidator() {
         setMode(template.mode)
     }, [])
 
-    // --- 事前確認チャット ---
-    const startPreCheck = useCallback(async () => {
-        if (csvRows.length === 0 || !prompt.trim()) return
+    // --- 事前確認 ---
+    const callPreCheck = useCallback(async (messages: ChatMessage[]) => {
         setIsPreChecking(true)
         setError(null)
 
@@ -211,7 +222,7 @@ export default function DataValidator() {
                     mode,
                     pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
                     model,
-                    messages: [],
+                    messages,
                 }),
             })
 
@@ -221,61 +232,76 @@ export default function DataValidator() {
                 return
             }
 
-            const data = await res.json()
-            setPreCheckMessages([{ role: 'assistant', content: data.reply }])
+            const data: PreCheckResponse = await res.json()
+
+            // AIの応答をJSON文字列として会話履歴に追加
+            const assistantContent = JSON.stringify({
+                message: data.message,
+                questions: data.questions,
+                ready: data.ready,
+            })
+            setPreCheckMessages(prev => [...prev, { role: 'assistant', content: assistantContent }])
+
+            if (data.ready) {
+                setPreCheckReady(true)
+                setPreCheckSummary(data.message)
+                setCurrentQuestions([])
+            } else {
+                setCurrentQuestions(data.questions)
+                setQuestionAnswers({})
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : '通信エラー')
         } finally {
             setIsPreChecking(false)
         }
-    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, model])
+    }, [csvHeaders, csvRows, prompt, mode, pdfBase64, model])
 
-    const sendPreCheckMessage = useCallback(async () => {
-        if (!userInput.trim() || isPreChecking) return
+    const startPreCheck = useCallback(() => {
+        if (csvRows.length === 0 || !prompt.trim()) return
+        setPreCheckMessages([])
+        setPreCheckReady(false)
+        setPreCheckSummary('')
+        callPreCheck([])
+    }, [csvRows, prompt, callPreCheck])
 
-        const newUserMsg: ChatMessage = { role: 'user', content: userInput.trim() }
+    const submitAnswers = useCallback(() => {
+        // 回答をまとめたテキストを作成
+        const answerText = currentQuestions
+            .map(q => `${q.question}\n→ ${questionAnswers[q.id] || '（未回答）'}`)
+            .join('\n\n')
+
+        const newUserMsg: ChatMessage = { role: 'user', content: answerText }
         const updatedMessages = [...preCheckMessages, newUserMsg]
         setPreCheckMessages(updatedMessages)
-        setUserInput('')
-        setIsPreChecking(true)
+        setCurrentQuestions([])
+        setQuestionAnswers({})
+        callPreCheck(updatedMessages)
+    }, [currentQuestions, questionAnswers, preCheckMessages, callPreCheck])
 
-        try {
-            const res = await fetch('/api/pre-check', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    headers: csvHeaders,
-                    sampleRows: csvRows.slice(0, 5),
-                    prompt,
-                    mode,
-                    pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
-                    model,
-                    messages: updatedMessages,
-                }),
-            })
-
-            if (!res.ok) {
-                const errData = await res.json()
-                setError(errData.error || `HTTP ${res.status}`)
-                return
-            }
-
-            const data = await res.json()
-            setPreCheckMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
-        } catch (err) {
-            setError(err instanceof Error ? err.message : '通信エラー')
-        } finally {
-            setIsPreChecking(false)
-        }
-    }, [userInput, isPreChecking, preCheckMessages, csvHeaders, csvRows, prompt, mode, pdfBase64, model])
-
-    // チャットコンテキストをテキスト化
+    // 事前確認コンテキストをテキスト化
     const buildPreCheckContext = useCallback((): string | undefined => {
         if (preCheckMessages.length === 0) return undefined
-        return preCheckMessages.map(m =>
-            `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`
-        ).join('\n\n')
-    }, [preCheckMessages])
+
+        const lines: string[] = []
+        for (const m of preCheckMessages) {
+            if (m.role === 'user') {
+                lines.push(`ユーザー: ${m.content}`)
+            } else {
+                // assistantのJSON応答からmessageを抽出
+                try {
+                    const parsed = JSON.parse(m.content)
+                    if (parsed.message) lines.push(`AI: ${parsed.message}`)
+                } catch {
+                    lines.push(`AI: ${m.content}`)
+                }
+            }
+        }
+        if (preCheckSummary) {
+            lines.push(`\n## 最終合意: ${preCheckSummary}`)
+        }
+        return lines.join('\n\n')
+    }, [preCheckMessages, preCheckSummary])
 
     // --- 検証実行 ---
     const runValidation = useCallback(async () => {
@@ -626,7 +652,7 @@ export default function DataValidator() {
                 </div>
             </div>
 
-            {/* Step 4: 事前確認チャット */}
+            {/* Step 4: 事前確認 */}
             <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                 <div className="flex items-start gap-4">
                     <div className="w-12 h-12 bg-teal-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -638,77 +664,94 @@ export default function DataValidator() {
                             <p className="text-sm text-slate-400">検証前にAIとデータの内容・チェック方針を擦り合わせます</p>
                         </div>
 
-                        {preCheckMessages.length === 0 ? (
+                        {/* 初期状態: 開始ボタン */}
+                        {preCheckMessages.length === 0 && !isPreChecking && (
                             <button
                                 onClick={startPreCheck}
-                                disabled={csvRows.length === 0 || !prompt.trim() || isPreChecking}
+                                disabled={csvRows.length === 0 || !prompt.trim()}
                                 className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                             >
-                                {isPreChecking ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <MessageCircle className="w-4 h-4" />
-                                )}
+                                <MessageCircle className="w-4 h-4" />
                                 事前確認を開始
                             </button>
-                        ) : (
+                        )}
+
+                        {/* ローディング */}
+                        {isPreChecking && (
+                            <div className="flex items-center gap-3 py-4">
+                                <Loader2 className="w-5 h-5 text-teal-400 animate-spin" />
+                                <span className="text-sm text-slate-300">AIが確認事項を整理中...</span>
+                            </div>
+                        )}
+
+                        {/* 準備完了 */}
+                        {preCheckReady && (
+                            <div className="bg-teal-900/30 border border-teal-700/50 rounded-lg px-4 py-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <CheckCircle2 className="w-5 h-5 text-teal-400" />
+                                    <span className="text-sm font-medium text-teal-300">事前確認完了</span>
+                                </div>
+                                <p className="text-sm text-slate-300 whitespace-pre-wrap">{preCheckSummary}</p>
+                            </div>
+                        )}
+
+                        {/* 質問カード */}
+                        {!isPreChecking && currentQuestions.length > 0 && (
                             <>
-                                {/* チャット履歴 */}
-                                <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                                    {preCheckMessages.map((msg, i) => (
-                                        <div
-                                            key={i}
-                                            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                        >
-                                            <div
-                                                className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap ${
-                                                    msg.role === 'user'
-                                                        ? 'bg-teal-600/30 border border-teal-600/50 text-teal-100'
-                                                        : 'bg-slate-700 border border-slate-600 text-slate-200'
-                                                }`}
-                                            >
-                                                {msg.content}
-                                            </div>
+                                {/* AIメッセージ（あれば） */}
+                                {preCheckMessages.length > 0 && (() => {
+                                    const lastAssistant = [...preCheckMessages].reverse().find(m => m.role === 'assistant')
+                                    if (!lastAssistant) return null
+                                    try {
+                                        const parsed = JSON.parse(lastAssistant.content)
+                                        if (parsed.message) {
+                                            return (
+                                                <p className="text-sm text-slate-300 whitespace-pre-wrap">{parsed.message}</p>
+                                            )
+                                        }
+                                    } catch { /* ignore */ }
+                                    return null
+                                })()}
+
+                                <div className="space-y-3">
+                                    {currentQuestions.map((q) => (
+                                        <div key={q.id} className="bg-slate-700/50 border border-slate-600 rounded-lg p-4">
+                                            <label className="block text-sm text-slate-200 mb-2">{q.question}</label>
+                                            <input
+                                                type="text"
+                                                value={questionAnswers[q.id] || ''}
+                                                onChange={(e) => setQuestionAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                                placeholder="回答を入力..."
+                                                className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                            />
                                         </div>
                                     ))}
-                                    {isPreChecking && (
-                                        <div className="flex justify-start">
-                                            <div className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5">
-                                                <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div ref={chatEndRef} />
-                                </div>
-
-                                {/* 入力欄 */}
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={userInput}
-                                        onChange={(e) => setUserInput(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPreCheckMessage() } }}
-                                        placeholder="回答を入力..."
-                                        className="flex-1 bg-slate-700 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                        disabled={isPreChecking}
-                                    />
                                     <button
-                                        onClick={sendPreCheckMessage}
-                                        disabled={!userInput.trim() || isPreChecking}
-                                        className="px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        onClick={submitAnswers}
+                                        disabled={currentQuestions.some(q => !questionAnswers[q.id]?.trim())}
+                                        className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                                     >
                                         <Send className="w-4 h-4" />
+                                        回答を送信
                                     </button>
                                 </div>
-
-                                {/* リセット */}
-                                <button
-                                    onClick={() => { setPreCheckMessages([]); setUserInput('') }}
-                                    className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
-                                >
-                                    チャットをリセット
-                                </button>
                             </>
+                        )}
+
+                        {/* リセットボタン */}
+                        {(preCheckMessages.length > 0 || preCheckReady) && !isPreChecking && (
+                            <button
+                                onClick={() => {
+                                    setPreCheckMessages([])
+                                    setPreCheckReady(false)
+                                    setPreCheckSummary('')
+                                    setCurrentQuestions([])
+                                    setQuestionAnswers({})
+                                }}
+                                className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
+                            >
+                                リセットしてやり直す
+                            </button>
                         )}
                     </div>
                 </div>
