@@ -171,11 +171,11 @@ ${tableRows}`,
                     }
 
                     // \0 区切り + 処理済みJSON
-                    controller.enqueue(encoder.encode('\0' + JSON.stringify(result)))
+                    controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify(result)))
                     controller.close()
                 } catch (error) {
                     const errMsg = error instanceof Error ? error.message : '不明なエラー'
-                    controller.enqueue(encoder.encode('\0' + JSON.stringify({ error: errMsg })))
+                    controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify({ error: errMsg })))
                     controller.close()
                 }
             }

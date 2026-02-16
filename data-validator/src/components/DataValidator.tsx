@@ -257,12 +257,12 @@ export default function DataValidator() {
 
             // ストリーミングレスポンス: Claudeトークン + \0区切り + 処理済みJSON
             const rawText = await res.text()
-            const sepIndex = rawText.lastIndexOf('\0')
+            const sepIndex = rawText.lastIndexOf('\n__RESULT__\n')
             if (sepIndex === -1) {
                 setError('AIからの応答の処理に失敗しました')
                 return
             }
-            const data = JSON.parse(rawText.slice(sepIndex + 1)) as PreCheckResponse & { error?: string }
+            const data = JSON.parse(rawText.slice(sepIndex + '\n__RESULT__\n'.length)) as PreCheckResponse & { error?: string }
             if (data.error) {
                 setError(data.error)
                 return
@@ -401,7 +401,7 @@ export default function DataValidator() {
 
                     // ストリーミングレスポンス: Claudeトークン + \0区切り + 処理済みJSON
                     const rawText = await res.text()
-                    const sepIndex = rawText.lastIndexOf('\0')
+                    const sepIndex = rawText.lastIndexOf('\n__RESULT__\n')
                     if (sepIndex === -1) {
                         setBatchResults(prev => [...prev, {
                             batchIndex: batchIdx,
@@ -410,7 +410,7 @@ export default function DataValidator() {
                         }])
                         break
                     }
-                    const data = JSON.parse(rawText.slice(sepIndex + 1))
+                    const data = JSON.parse(rawText.slice(sepIndex + '\n__RESULT__\n'.length))
 
                     // ストリーム内エラーチェック
                     if (data.error) {
