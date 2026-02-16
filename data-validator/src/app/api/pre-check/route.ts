@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 ${tableRows}
 
 ## 検証モード
-${mode === 'web' ? 'Web検索で事実確認' : 'PDF原本との照合'}
+${mode === 'pdf' && pdfBase64 ? 'PDF原本との照合（※上記に添付されたPDFが照合対象の原本です）' : 'Web検索で事実確認'}
 
 ## 検証プロンプト
 ${prompt}`,
@@ -108,7 +108,7 @@ ${prompt}`,
 ${tableRows}
 
 ## 検証モード
-${mode === 'web' ? 'Web検索で事実確認' : 'PDF原本との照合'}
+${mode === 'pdf' && pdfBase64 ? 'PDF原本との照合（※上記に添付されたPDFが照合対象の原本です）' : 'Web検索で事実確認'}
 
 ## 検証プロンプト
 ${prompt}`,
