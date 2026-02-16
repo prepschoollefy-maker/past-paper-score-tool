@@ -16,17 +16,28 @@ import {
     X,
     MessageCircle,
     Send,
+    Check,
+    Undo2,
+    ArrowRight,
 } from 'lucide-react'
 import { downloadExcel } from '@/lib/excelExport'
 import ExcelJS from 'exceljs'
 
 // --- 型定義 ---
 
+interface ColumnCorrection {
+    column: string
+    columnIndex: number
+    original: string
+    corrected: string
+}
+
 interface ValidationResult {
     rowIndex: number
     status: 'OK' | 'NG' | 'WARN'
     details: string
     correction?: string
+    corrections?: ColumnCorrection[]
     sources?: string[]
 }
 
@@ -115,6 +126,9 @@ export default function DataValidator() {
     // 結果フィルター
     const [filter, setFilter] = useState<FilterStatus>('ALL')
 
+    // 修正適用
+    const [appliedCorrections, setAppliedCorrections] = useState<Map<string, string>>(new Map())
+
     // 事前確認
     const [preCheckMessages, setPreCheckMessages] = useState<ChatMessage[]>([])
     const [isPreChecking, setIsPreChecking] = useState(false)
@@ -174,6 +188,7 @@ export default function DataValidator() {
         setCsvFile(f)
         setBatchResults([])
         setError(null)
+        setAppliedCorrections(new Map())
 
         if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
             await parseExcel(f)
@@ -299,6 +314,7 @@ export default function DataValidator() {
         setIsRunning(true)
         setError(null)
         setBatchResults([])
+        setAppliedCorrections(new Map())
         abortRef.current = false
 
         const batches: string[][][] = []
@@ -410,17 +426,80 @@ export default function DataValidator() {
     }
     const errors = batchResults.filter(br => br.error)
 
+    // --- 修正適用ヘルパー ---
+    const getEffectiveValue = (rowIndex: number, colIndex: number): string => {
+        const key = `${rowIndex}-${colIndex}`
+        return appliedCorrections.get(key) ?? csvRows[rowIndex]?.[colIndex] ?? ''
+    }
+
+    const getEffectiveRow = (rowIndex: number): string[] => {
+        const row = csvRows[rowIndex]
+        if (!row) return []
+        return row.map((_, colIndex) => getEffectiveValue(rowIndex, colIndex))
+    }
+
+    const isCellCorrected = (rowIndex: number, colIndex: number): boolean => {
+        return appliedCorrections.has(`${rowIndex}-${colIndex}`)
+    }
+
+    const applyRowCorrections = (result: ValidationResult) => {
+        if (!result.corrections) return
+        setAppliedCorrections(prev => {
+            const next = new Map(prev)
+            for (const c of result.corrections!) {
+                next.set(`${result.rowIndex}-${c.columnIndex}`, c.corrected)
+            }
+            return next
+        })
+    }
+
+    const undoRowCorrections = (result: ValidationResult) => {
+        if (!result.corrections) return
+        setAppliedCorrections(prev => {
+            const next = new Map(prev)
+            for (const c of result.corrections!) {
+                next.delete(`${result.rowIndex}-${c.columnIndex}`)
+            }
+            return next
+        })
+    }
+
+    const isRowCorrected = (result: ValidationResult): boolean => {
+        if (!result.corrections || result.corrections.length === 0) return false
+        return result.corrections.some(c => appliedCorrections.has(`${result.rowIndex}-${c.columnIndex}`))
+    }
+
+    const correctableResults = allResults.filter(r => r.corrections && r.corrections.length > 0)
+
+    const applyAllCorrections = () => {
+        setAppliedCorrections(prev => {
+            const next = new Map(prev)
+            for (const r of correctableResults) {
+                for (const c of r.corrections!) {
+                    next.set(`${r.rowIndex}-${c.columnIndex}`, c.corrected)
+                }
+            }
+            return next
+        })
+    }
+
+    const resetAllCorrections = () => {
+        setAppliedCorrections(new Map())
+    }
+
     // --- CSV出力 ---
     const downloadResultsCsv = useCallback(() => {
-        const header = '行番号,ステータス,CSVデータ,検証結果,修正案,参照元'
+        const header = '行番号,ステータス,CSVデータ,修正後データ,検証結果,修正案,参照元'
         const lines = allResults.map(r => {
             const rowData = csvRows[r.rowIndex]
                 ? csvRows[r.rowIndex].join(' / ')
                 : ''
+            const effectiveData = getEffectiveRow(r.rowIndex).join(' / ')
             return [
                 r.rowIndex + 1,
                 r.status,
                 `"${rowData.replace(/"/g, '""')}"`,
+                `"${effectiveData.replace(/"/g, '""')}"`,
                 `"${(r.details || '').replace(/"/g, '""')}"`,
                 `"${(r.correction || '').replace(/"/g, '""')}"`,
                 `"${(r.sources || []).join('; ').replace(/"/g, '""')}"`,
@@ -435,7 +514,7 @@ export default function DataValidator() {
         a.download = `validation_results_${new Date().toISOString().slice(0, 10)}.csv`
         a.click()
         URL.revokeObjectURL(url)
-    }, [allResults, csvRows])
+    }, [allResults, csvRows, appliedCorrections])
 
     // --- ステータスアイコン ---
     const StatusIcon = ({ status }: { status: string }) => {
@@ -513,9 +592,20 @@ export default function DataValidator() {
                                 {csvRows.slice(0, 5).map((row, i) => (
                                     <tr key={i}>
                                         <td className="px-3 py-2 text-slate-500 text-xs">{i + 1}</td>
-                                        {row.map((cell, j) => (
-                                            <td key={j} className="px-3 py-2 text-slate-300 text-xs max-w-[200px] truncate">{cell}</td>
-                                        ))}
+                                        {row.map((_, j) => {
+                                            const corrected = isCellCorrected(i, j)
+                                            const value = getEffectiveValue(i, j)
+                                            return (
+                                                <td
+                                                    key={j}
+                                                    className={`px-3 py-2 text-xs max-w-[200px] truncate ${
+                                                        corrected ? 'bg-green-900/30 text-green-300 font-medium' : 'text-slate-300'
+                                                    }`}
+                                                >
+                                                    {value}
+                                                </td>
+                                            )
+                                        })}
                                     </tr>
                                 ))}
                             </tbody>
@@ -875,7 +965,7 @@ export default function DataValidator() {
                             </button>
                             {/* Excelダウンロード */}
                             <button
-                                onClick={() => downloadExcel(csvHeaders, csvRows, allResults)}
+                                onClick={() => downloadExcel(csvHeaders, csvRows, allResults, appliedCorrections)}
                                 className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors text-sm"
                             >
                                 <FileSpreadsheet className="w-4 h-4" />
@@ -883,6 +973,32 @@ export default function DataValidator() {
                             </button>
                         </div>
                     </div>
+
+                    {/* 一括修正ツールバー */}
+                    {correctableResults.length > 0 && (
+                        <div className="flex items-center gap-3 mb-4 p-3 bg-slate-700/50 rounded-lg">
+                            <button
+                                onClick={applyAllCorrections}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors text-sm font-medium"
+                            >
+                                <Check className="w-4 h-4" />
+                                全修正を適用（{correctableResults.length}件）
+                            </button>
+                            <button
+                                onClick={resetAllCorrections}
+                                disabled={appliedCorrections.size === 0}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 text-slate-300 rounded-lg hover:bg-slate-500 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Undo2 className="w-4 h-4" />
+                                全リセット
+                            </button>
+                            {appliedCorrections.size > 0 && (
+                                <span className="text-sm text-green-400 ml-auto">
+                                    {appliedCorrections.size}セル修正済み
+                                </span>
+                            )}
+                        </div>
+                    )}
 
                     <div className="space-y-2 max-h-[600px] overflow-y-auto">
                         {filteredResults.map((r, i) => (
@@ -909,12 +1025,44 @@ export default function DataValidator() {
                                         </p>
                                         {/* 検証結果 */}
                                         <p className="text-sm text-slate-200">{r.details}</p>
-                                        {/* 修正案 */}
-                                        {r.correction && (
+                                        {/* 構造化修正案 */}
+                                        {r.corrections && r.corrections.length > 0 ? (
+                                            <div className="mt-2 space-y-1">
+                                                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                                    {r.corrections.map((c, ci) => (
+                                                        <span key={ci} className="text-xs">
+                                                            <span className="text-slate-400">{c.column}: </span>
+                                                            <span className="text-red-400 line-through">{c.original}</span>
+                                                            <ArrowRight className="w-3 h-3 inline mx-1 text-slate-500" />
+                                                            <span className="text-green-400 font-medium">{c.corrected}</span>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                                <div className="flex gap-2 mt-1.5">
+                                                    {!isRowCorrected(r) ? (
+                                                        <button
+                                                            onClick={() => applyRowCorrections(r)}
+                                                            className="flex items-center gap-1 px-2.5 py-1 bg-green-600/80 text-white rounded text-xs hover:bg-green-500 transition-colors"
+                                                        >
+                                                            <Check className="w-3 h-3" />
+                                                            適用
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => undoRowCorrections(r)}
+                                                            className="flex items-center gap-1 px-2.5 py-1 bg-slate-600 text-slate-300 rounded text-xs hover:bg-slate-500 transition-colors"
+                                                        >
+                                                            <Undo2 className="w-3 h-3" />
+                                                            元に戻す
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : r.correction ? (
                                             <p className="text-sm text-orange-300 mt-1">
                                                 修正案: {r.correction}
                                             </p>
-                                        )}
+                                        ) : null}
                                         {/* 参照元 */}
                                         {r.sources && r.sources.length > 0 && (
                                             <div className="mt-1 flex flex-wrap gap-2">

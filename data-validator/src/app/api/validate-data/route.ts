@@ -12,11 +12,19 @@ interface ValidateRequest {
     pdfExtract?: string
 }
 
+interface ColumnCorrection {
+    column: string
+    columnIndex: number
+    original: string
+    corrected: string
+}
+
 interface ValidationResult {
     rowIndex: number
     status: 'OK' | 'NG' | 'WARN'
     details: string
     correction?: string
+    corrections?: ColumnCorrection[]
     sources?: string[]
 }
 
@@ -60,7 +68,14 @@ export async function POST(request: NextRequest) {
       "rowIndex": 0,
       "status": "OK" | "NG" | "WARN",
       "details": "検証結果の具体的な説明",
-      "correction": "NGの場合、正しいと思われる値（任意）",
+      "correction": "NGの場合、修正案のテキスト説明（任意）",
+      "corrections": [
+        {
+          "column": "ヘッダー名",
+          "original": "現在の値",
+          "corrected": "修正後の値"
+        }
+      ],
       "sources": ["参照元URL（任意）"]
     }
   ]
@@ -69,7 +84,9 @@ export async function POST(request: NextRequest) {
 ステータスの基準:
 - OK: データが正確であることを確認できた
 - NG: 明らかな誤りを発見した（具体的に何が間違っているか記載）
-- WARN: 確認できなかった、または疑わしい点がある（理由を記載）`
+- WARN: 確認できなかった、または疑わしい点がある（理由を記載）
+
+NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具体的な修正内容を返してください。columnにはヘッダー名を、originalには現在の値を、correctedには修正後の値を指定してください。`
 
         // 事前確認コンテキストがある場合、追加
         const preCheckSection = preCheckContext
@@ -112,7 +129,7 @@ export async function POST(request: NextRequest) {
         // Claude API呼出
         const messageParams: Anthropic.MessageCreateParams = {
             model: model || 'claude-sonnet-4-5-20250929',
-            max_tokens: 4096,
+            max_tokens: 8192,
             system: systemPrompt + preCheckSection,
             messages: [{ role: 'user', content: userContent }],
         }
@@ -167,6 +184,16 @@ export async function POST(request: NextRequest) {
                     details: `AIレスポンスの解析に失敗しました。生テキスト: ${textBlock.text.substring(0, 200)}...`,
                 })),
             })
+        }
+
+        // correctionsのcolumnIndexを解決
+        const headerIndexMap = new Map(headers.map((h, i) => [h, i]))
+        for (const r of results) {
+            if (r.corrections) {
+                r.corrections = r.corrections
+                    .map(c => ({ ...c, columnIndex: headerIndexMap.get(c.column) ?? -1 }))
+                    .filter(c => c.columnIndex >= 0)
+            }
         }
 
         return NextResponse.json({ results })
