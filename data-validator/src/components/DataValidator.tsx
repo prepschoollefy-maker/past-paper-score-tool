@@ -243,8 +243,15 @@ export default function DataValidator() {
             })
 
             if (!res.ok) {
-                const errData = await res.json()
-                setError(errData.error || `HTTP ${res.status}`)
+                let errMsg = `HTTP ${res.status}`
+                try {
+                    const errData = await res.json()
+                    errMsg = errData.error || errMsg
+                } catch {
+                    const text = await res.text().catch(() => '')
+                    if (text) errMsg = text.slice(0, 200)
+                }
+                setError(errMsg)
                 return
             }
 
@@ -366,11 +373,18 @@ export default function DataValidator() {
                     }
 
                     if (!res.ok) {
-                        const errData = await res.json()
+                        let errMsg = `HTTP ${res.status}`
+                        try {
+                            const errData = await res.json()
+                            errMsg = errData.error || errMsg
+                        } catch {
+                            const text = await res.text().catch(() => '')
+                            if (text) errMsg = text.slice(0, 200)
+                        }
                         setBatchResults(prev => [...prev, {
                             batchIndex: batchIdx,
                             results: [],
-                            error: errData.error || `HTTP ${res.status}`,
+                            error: errMsg,
                         }])
                         break
                     }
