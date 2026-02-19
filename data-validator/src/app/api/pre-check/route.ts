@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
 
         const client = new Anthropic({ apiKey })
 
-        // サンプルデータをテーブル形式に
         const tableHeader = headers.join(' | ')
         const tableRows = sampleRows.map((row, i) =>
             `行${i + 1}: ${row.join(' | ')}`
@@ -52,26 +51,17 @@ export async function POST(request: NextRequest) {
 3. 何をもってOK/NG/WARNと判定するか基準が明確か
 4. 曖昧な点や確認すべきことがないか
 
-必ず以下のJSON形式で回答してください。JSON以外のテキストは含めないでください。
+必ず以下のJSON形式で回答してください。
+【重要】JSON以外のテキストは含めないでください。マークダウンのコードブロック(\`\`\`json ... \`\`\`)で囲まないでください。純粋なJSONのみ出力してください。
 
-{
-  "message": "状況の説明や理解した内容の要約（任意）",
-  "questions": [
-    { "id": "q1", "question": "質問内容" },
-    { "id": "q2", "question": "質問内容" }
-  ],
-  "ready": false,
-  "pdfExtract": "（PDFモード時のみ）PDFから読み取った全データをテキスト形式で記載"
-}
+{"message":"要約","questions":[{"id":"q1","question":"質問内容"}],"ready":false}
 
-- questions: 確認したい質問のリスト。質問がなければ空配列。
-- ready: すべて明確で検証開始できる状態ならtrue、まだ確認が必要ならfalse。
-- readyがtrueの場合、messageに検証方針の要約を記載してください。
-${isPdf ? `- pdfExtract: 【PDF照合モード・非常に重要】readyがtrueの場合、PDFから読み取った全データ（数値・テキスト・表）を省略なくテキスト形式で記載してください。このテキストが後続の検証で原本データとして使用されます。PDFの内容を正確かつ網羅的に抽出してください。` : '- pdfExtract: 空文字で構いません。'}
+- message: 1-2文で簡潔に。箇条書きや詳細説明は不要。
+- questions: 確認したい質問のリスト。各質問は{"id":"q1","question":"質問内容"}の形式。質問がなければ空配列。
+- ready: すべて明確で検証開始できる状態ならtrue。
 
 回答は日本語でお願いします。`
 
-        // 初回メッセージを構築する共通関数
         const buildFirstContent = (): Anthropic.ContentBlockParam[] => {
             const content: Anthropic.ContentBlockParam[] = []
 
@@ -115,10 +105,12 @@ ${tableRows}`,
             }
         }
 
-        // Claude Streaming APIで実際のトークンを流し、Vercelタイムアウトを回避
+        // assistantプリフィルで「{」から開始させ、コードブロックを防止
+        apiMessages.push({ role: 'assistant', content: '{' })
+
         const messageStream = client.messages.stream({
             model: model || 'claude-sonnet-4-5-20250929',
-            max_tokens: 8192,
+            max_tokens: 4096,
             system: systemPrompt,
             messages: apiMessages,
         })
@@ -126,58 +118,24 @@ ${tableRows}`,
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                let fullText = ''
-
+                // プリフィルの「{」をストリーム先頭に追加
+                controller.enqueue(encoder.encode('{'))
                 try {
                     for await (const event of messageStream) {
                         if (
                             event.type === 'content_block_delta' &&
                             event.delta.type === 'text_delta'
                         ) {
-                            fullText += event.delta.text
                             controller.enqueue(encoder.encode(event.delta.text))
-                        } else {
-                            // 非テキストイベントでも接続維持のためデータを送る
-                            controller.enqueue(encoder.encode(' '))
                         }
                     }
-
-                    // ストリーム完了: テキストを解析して処理済み結果を追加
-                    let result
-                    if (!fullText.trim()) {
-                        result = { error: 'AIからの応答がありませんでした' }
-                    } else {
-                        try {
-                            let jsonText = fullText.trim()
-                            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-                            if (jsonMatch) jsonText = jsonMatch[1].trim()
-                            const firstBrace = jsonText.indexOf('{')
-                            if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
-                            const parsed = JSON.parse(jsonText)
-                            result = {
-                                message: parsed.message || '',
-                                questions: parsed.questions || [],
-                                ready: parsed.ready || false,
-                                pdfExtract: parsed.pdfExtract || '',
-                            }
-                        } catch {
-                            result = {
-                                message: fullText,
-                                questions: [],
-                                ready: false,
-                                pdfExtract: '',
-                            }
-                        }
-                    }
-
-                    // \0 区切り + 処理済みJSON
-                    controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify(result)))
                     controller.close()
                 } catch (error) {
+                    // エラーをJSONとして送信（クライアントが検出可能）
                     const errMsg = error instanceof Error ? error.message : '不明なエラー'
                     try {
-                        controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify({ error: errMsg })))
-                    } catch { /* controller already closed */ }
+                        controller.enqueue(encoder.encode('\n{"__stream_error":"' + errMsg.replace(/["\\\n]/g, ' ') + '"}'))
+                    } catch { /* controller closed */ }
                     try { controller.close() } catch { /* already closed */ }
                 }
             }
@@ -193,7 +151,9 @@ ${tableRows}`,
     } catch (error) {
         console.error('Pre-check error:', error)
         const errMsg = error instanceof Error ? error.message : '不明なエラー'
-        const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429 : 500
+        const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429
+            : errMsg.includes('overloaded') || errMsg.includes('529') ? 529
+            : 500
         return NextResponse.json({ error: errMsg }, { status })
     }
 }

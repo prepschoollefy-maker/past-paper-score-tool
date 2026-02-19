@@ -66,6 +66,91 @@ interface PreCheckResponse {
     pdfExtract: string
 }
 
+// --- JSON文字列内の生の制御文字をエスケープ ---
+function sanitizeJsonString(text: string): string {
+    let result = ''
+    let inString = false
+    let escape = false
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+        if (escape) {
+            result += ch
+            escape = false
+            continue
+        }
+        if (ch === '\\' && inString) {
+            result += ch
+            escape = true
+            continue
+        }
+        if (ch === '"') {
+            inString = !inString
+            result += ch
+            continue
+        }
+        if (inString) {
+            if (ch === '\n') { result += '\\n'; continue }
+            if (ch === '\r') { result += '\\r'; continue }
+            if (ch === '\t') { result += '\\t'; continue }
+        }
+        result += ch
+    }
+    return result
+}
+
+// --- JSON修復パーサー（途中切れ・生改行対応、コンポーネント外で定義） ---
+function tryParseJson(text: string): unknown | null {
+    // 0. 前処理: プリフィル重複 {{ の修正
+    let input = text.trim()
+    if (input.startsWith('{{')) {
+        input = input.substring(1)
+    }
+
+    // 1. そのままパース
+    try { return JSON.parse(input) } catch { /* continue */ }
+
+    // 2. JSON文字列内の生改行をエスケープしてリトライ
+    let cleaned = sanitizeJsonString(input)
+    try { return JSON.parse(cleaned) } catch { /* continue */ }
+
+    // 3. コードブロック除去
+    const codeMatch = cleaned.match(/```json\s*([\s\S]*?)```/)
+    if (codeMatch) {
+        cleaned = codeMatch[1].trim()
+    } else if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\s*/, '')
+    }
+    const firstBrace = cleaned.indexOf('{')
+    if (firstBrace > 0) cleaned = cleaned.substring(firstBrace)
+    if (firstBrace < 0) return null
+
+    try { return JSON.parse(cleaned) } catch { /* continue */ }
+
+    // 4. 途中切れ修復: 末尾の不完全なエスケープを除去し、閉じ括弧を補完
+    let repaired = cleaned.replace(/\\+$/, m => m.length % 2 === 0 ? m : m.slice(0, -1))
+    // 末尾の不完全な要素・カンマを除去（ },  や , で切れた場合）
+    repaired = repaired.replace(/,\s*$/, '')
+    for (const suffix of ['"}', '"}]', '"}}', '"}]}', '}', ']}', ']}}', '"]}]', '"]}}', ']}]', '}]}']) {
+        try { return JSON.parse(repaired + suffix) } catch { /* continue */ }
+    }
+    // 末尾がキー名の途中やオブジェクトの途中の場合: 最後の完結した要素まで戻して閉じる
+    const lastComplete = Math.max(repaired.lastIndexOf('},'), repaired.lastIndexOf('}]'), repaired.lastIndexOf(',"'))
+    if (lastComplete > 0) {
+        // },  の場合は } まで、}] の場合は }] まで、," の場合は , の前まで
+        let truncated: string
+        if (repaired[lastComplete] === ',') {
+            truncated = repaired.substring(0, lastComplete)
+        } else {
+            truncated = repaired.substring(0, lastComplete + (repaired[lastComplete + 1] === ']' ? 2 : 1))
+        }
+        for (const suffix of ['', '}', ']}', '}}', ']}}', ']}]', '}]}']) {
+            try { return JSON.parse(truncated + suffix) } catch { /* continue */ }
+        }
+    }
+
+    return null
+}
+
 // --- プロンプトテンプレート ---
 
 const PROMPT_TEMPLATES = [
@@ -136,7 +221,6 @@ export default function DataValidator() {
     const [currentQuestions, setCurrentQuestions] = useState<PreCheckQuestion[]>([])
     const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({})
     const [preCheckSummary, setPreCheckSummary] = useState('')
-    const [pdfExtract, setPdfExtract] = useState('')
 
     // --- CSV解析 ---
     const parseCSV = useCallback((text: string) => {
@@ -152,6 +236,53 @@ export default function DataValidator() {
         setCsvRows(rows)
     }, [])
 
+    // --- Excel セル値取得（書式を維持） ---
+    const getCellText = (cell: ExcelJS.Cell): string => {
+        const value = cell.value
+        if (value === null || value === undefined) return ''
+
+        // Date オブジェクト
+        if (value instanceof Date) {
+            if (isNaN(value.getTime())) return ''
+            const y = value.getFullYear()
+            const m = String(value.getMonth() + 1).padStart(2, '0')
+            const d = String(value.getDate()).padStart(2, '0')
+            return `${y}/${m}/${d}`
+        }
+
+        // 数値 + 日付書式 → Excel日付シリアル値を変換
+        if (typeof value === 'number' && cell.numFmt) {
+            const cleanFmt = cell.numFmt.replace(/"[^"]*"/g, '').replace(/\\./g, '')
+            if (/[yYdD]/.test(cleanFmt)) {
+                const epoch = new Date(Date.UTC(1899, 11, 30))
+                const date = new Date(epoch.getTime() + value * 86400000)
+                const y = date.getFullYear()
+                const m = String(date.getMonth() + 1).padStart(2, '0')
+                const d = String(date.getDate()).padStart(2, '0')
+                return `${y}/${m}/${d}`
+            }
+        }
+
+        // リッチテキスト
+        if (typeof value === 'object' && 'richText' in value) {
+            return (value as { richText: { text: string }[] }).richText.map(rt => rt.text).join('')
+        }
+
+        // 数式（結果を使用）
+        if (typeof value === 'object' && 'result' in value) {
+            const result = (value as { result: unknown }).result
+            if (result instanceof Date) {
+                const y = result.getFullYear()
+                const m = String(result.getMonth() + 1).padStart(2, '0')
+                const d = String(result.getDate()).padStart(2, '0')
+                return `${y}/${m}/${d}`
+            }
+            return String(result ?? '')
+        }
+
+        return String(value)
+    }
+
     // --- Excel解析 ---
     const parseExcel = useCallback(async (file: File) => {
         const buffer = await file.arrayBuffer()
@@ -163,7 +294,7 @@ export default function DataValidator() {
 
         const headers: string[] = []
         ws.getRow(1).eachCell({ includeEmpty: false }, (cell) => {
-            headers.push(String(cell.value ?? '').trim())
+            headers.push(getCellText(cell).trim())
         })
 
         const rows: string[][] = []
@@ -171,7 +302,7 @@ export default function DataValidator() {
             const row = ws.getRow(r)
             const values: string[] = []
             for (let c = 1; c <= headers.length; c++) {
-                values.push(String(row.getCell(c).value ?? '').trim())
+                values.push(getCellText(row.getCell(c)).trim())
             }
             if (values.some(v => v !== '')) {
                 rows.push(values)
@@ -255,43 +386,32 @@ export default function DataValidator() {
                 return
             }
 
-            // ストリーミングレスポンス: Claudeトークン + __RESULT__区切り + 処理済みJSON
+            // ストリーミングレスポンス: 生のClaudeテキストを直接パース
             const rawText = await res.text()
-            const RESULT_MARKER = '\n__RESULT__\n'
-            const sepIndex = rawText.lastIndexOf(RESULT_MARKER)
 
-            let data: PreCheckResponse & { error?: string }
-            if (sepIndex >= 0) {
-                data = JSON.parse(rawText.slice(sepIndex + RESULT_MARKER.length))
-            } else {
-                // フォールバック: 区切りなしの場合、生テキストから直接パース
-                const trimmed = rawText.trim()
-                if (!trimmed) {
-                    setError('AIからの応答がありませんでした')
-                    return
-                }
-                try {
-                    let jsonText = trimmed
-                    const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-                    if (jsonMatch) jsonText = jsonMatch[1].trim()
-                    const firstBrace = jsonText.indexOf('{')
-                    if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
-                    const parsed = JSON.parse(jsonText)
-                    data = {
-                        message: parsed.message || '',
-                        questions: parsed.questions || [],
-                        ready: parsed.ready || false,
-                        pdfExtract: parsed.pdfExtract || '',
-                    }
-                } catch {
-                    setError(`AIレスポンスの解析に失敗しました: ${trimmed.slice(0, 100)}`)
-                    return
-                }
+            // ストリームエラーチェック
+            const streamErrorMatch = rawText.match(/"__stream_error"\s*:\s*"([^"]*)"/)
+            if (streamErrorMatch) {
+                setError(streamErrorMatch[1])
+                return
             }
 
-            if (data.error) {
-                setError(data.error)
+            const trimmed = rawText.trim()
+            if (!trimmed) {
+                setError('AIからの応答がありませんでした')
                 return
+            }
+
+            const parsed = tryParseJson(trimmed) as Record<string, unknown> | null
+            if (!parsed || typeof parsed !== 'object') {
+                setError(`AIレスポンスの解析に失敗しました（トークン上限で途中切れの可能性）。Haikuモデルをお試しください。\n\n応答冒頭: ${trimmed.slice(0, 200)}`)
+                return
+            }
+            const data: PreCheckResponse = {
+                message: typeof parsed.message === 'string' ? parsed.message : '',
+                questions: Array.isArray(parsed.questions) ? parsed.questions as PreCheckQuestion[] : [],
+                ready: parsed.ready === true,
+                pdfExtract: '',
             }
 
             // AIの応答をJSON文字列として会話履歴に追加
@@ -305,7 +425,6 @@ export default function DataValidator() {
             if (data.ready) {
                 setPreCheckReady(true)
                 setPreCheckSummary(data.message)
-                if (data.pdfExtract) setPdfExtract(data.pdfExtract)
                 setCurrentQuestions([])
             } else {
                 setCurrentQuestions(data.questions)
@@ -323,7 +442,6 @@ export default function DataValidator() {
         setPreCheckMessages([])
         setPreCheckReady(false)
         setPreCheckSummary('')
-        setPdfExtract('')
         callPreCheck([])
     }, [csvRows, prompt, callPreCheck])
 
@@ -392,9 +510,7 @@ export default function DataValidator() {
                             headers: csvHeaders,
                             prompt,
                             mode,
-                            // PDF抽出済みならPDF本体は送らない（トークン節約）
-                            pdfBase64: mode === 'pdf' && !pdfExtract ? pdfBase64 : undefined,
-                            pdfExtract: pdfExtract || undefined,
+                            pdfBase64: mode === 'pdf' ? pdfBase64 : undefined,
                             model,
                             preCheckContext: buildPreCheckContext(),
                         }),
@@ -409,10 +525,12 @@ export default function DataValidator() {
                             const text = await res.text().catch(() => '')
                             if (text) errMsg = text.slice(0, 200)
                         }
-                        if (res.status === 429 && retries < maxRetries) {
+                        const isRetryable = res.status === 429 || res.status === 529 || errMsg.includes('overloaded') || errMsg.includes('Overloaded')
+                        if (isRetryable && retries < maxRetries) {
                             retries++
                             const waitSec = 30 * retries
-                            setError(`レートリミット - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
+                            const reason = res.status === 429 ? 'レートリミット' : 'サーバー混雑'
+                            setError(`${reason} - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
                             await new Promise(resolve => setTimeout(resolve, waitSec * 1000))
                             setError(null)
                             continue
@@ -425,50 +543,21 @@ export default function DataValidator() {
                         break
                     }
 
-                    // ストリーミングレスポンス: Claudeトークン + __RESULT__区切り + 処理済みJSON
+                    // ストリーミングレスポンス: 生のClaudeテキストを直接パース
                     const rawText = await res.text()
-                    const RESULT_MARKER = '\n__RESULT__\n'
-                    const sepIndex = rawText.lastIndexOf(RESULT_MARKER)
 
-                    let data: { results?: ValidationResult[]; error?: string; status?: number }
-                    if (sepIndex >= 0) {
-                        data = JSON.parse(rawText.slice(sepIndex + RESULT_MARKER.length))
-                    } else {
-                        // フォールバック: 区切りなしの場合、生テキストから直接パース
-                        const trimmed = rawText.trim()
-                        if (!trimmed) {
-                            setBatchResults(prev => [...prev, {
-                                batchIndex: batchIdx,
-                                results: [],
-                                error: 'AIからの応答がありませんでした',
-                            }])
-                            break
-                        }
-                        try {
-                            let jsonText = trimmed
-                            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-                            if (jsonMatch) jsonText = jsonMatch[1].trim()
-                            const firstBrace = jsonText.indexOf('{')
-                            if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
-                            const parsed = JSON.parse(jsonText)
-                            data = { results: parsed.results || parsed }
-                        } catch {
-                            setBatchResults(prev => [...prev, {
-                                batchIndex: batchIdx,
-                                results: [],
-                                error: `AIレスポンスの解析に失敗: ${trimmed.slice(0, 100)}`,
-                            }])
-                            break
-                        }
-                    }
-
-                    // ストリーム内エラーチェック
-                    if (data.error) {
-                        const isRateLimit = data.status === 429
-                        if (isRateLimit && retries < maxRetries) {
+                    // ストリームエラーチェック
+                    const streamErrorMatch = rawText.match(/"__stream_error"\s*:\s*"([^"]*)"/)
+                    if (streamErrorMatch) {
+                        const errMsg = streamErrorMatch[1]
+                        const statusMatch = rawText.match(/"__status"\s*:\s*(\d+)/)
+                        const status = statusMatch ? Number(statusMatch[1]) : 500
+                        const isRetryable = status === 429 || errMsg.includes('overloaded') || errMsg.includes('Overloaded')
+                        if (isRetryable && retries < maxRetries) {
                             retries++
                             const waitSec = 30 * retries
-                            setError(`レートリミット - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
+                            const reason = status === 429 ? 'レートリミット' : 'サーバー混雑'
+                            setError(`${reason} - ${waitSec}秒待機中... (リトライ ${retries}/${maxRetries})`)
                             await new Promise(resolve => setTimeout(resolve, waitSec * 1000))
                             setError(null)
                             continue
@@ -476,13 +565,46 @@ export default function DataValidator() {
                         setBatchResults(prev => [...prev, {
                             batchIndex: batchIdx,
                             results: [],
-                            error: data.error,
+                            error: errMsg,
                         }])
                         break
                     }
 
+                    const trimmed = rawText.trim()
+                    if (!trimmed) {
+                        setBatchResults(prev => [...prev, {
+                            batchIndex: batchIdx,
+                            results: [],
+                            error: 'AIからの応答がありませんでした',
+                        }])
+                        break
+                    }
+
+                    const parsedObj = tryParseJson(trimmed) as Record<string, unknown> | null
+                    if (!parsedObj || typeof parsedObj !== 'object') {
+                        setBatchResults(prev => [...prev, {
+                            batchIndex: batchIdx,
+                            results: [],
+                            error: `AIレスポンスの解析に失敗（途中切れの可能性）: ${trimmed.slice(0, 200)}`,
+                        }])
+                        break
+                    }
+
+                    let parsedResults: ValidationResult[] =
+                        Array.isArray(parsedObj.results) ? parsedObj.results as ValidationResult[] : []
+
+                    // columnIndex解決（クライアント側）
+                    const headerIndexMap = new Map(csvHeaders.map((h, i) => [h, i]))
+                    for (const r of parsedResults) {
+                        if (r.corrections) {
+                            r.corrections = r.corrections
+                                .map(c => ({ ...c, columnIndex: headerIndexMap.get(c.column) ?? -1 }))
+                                .filter(c => c.columnIndex >= 0)
+                        }
+                    }
+
                     // rowIndexをグローバルインデックスに変換
-                    const globalResults: ValidationResult[] = (data.results || []).map(
+                    const globalResults: ValidationResult[] = parsedResults.map(
                         (r: ValidationResult) => ({
                             ...r,
                             rowIndex: batchIdx * batchSize + r.rowIndex,
@@ -511,7 +633,7 @@ export default function DataValidator() {
         }
 
         setIsRunning(false)
-    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, pdfExtract, batchSize, model, buildPreCheckContext])
+    }, [csvRows, csvHeaders, prompt, mode, pdfBase64, batchSize, model, buildPreCheckContext])
 
     const stopValidation = useCallback(() => {
         abortRef.current = true
@@ -851,10 +973,20 @@ export default function DataValidator() {
                             </div>
                         </div>
 
-                        {/* 推定バッチ数 */}
+                        {/* 推定バッチ数・所要時間 */}
                         {csvRows.length > 0 && (
                             <p className="text-xs text-slate-500">
                                 {csvRows.length}行 / {batchSize}件ずつ = {Math.ceil(csvRows.length / batchSize)}バッチ
+                                {' / '}
+                                目安: 約{(() => {
+                                    const batches = Math.ceil(csvRows.length / batchSize)
+                                    const secPerBatch = mode === 'pdf' ? 30 : 20
+                                    const delay = 5
+                                    const totalSec = batches * secPerBatch + Math.max(0, batches - 1) * delay
+                                    return totalSec < 60
+                                        ? `${totalSec}秒`
+                                        : `${Math.ceil(totalSec / 60)}分`
+                                })()}
                             </p>
                         )}
                     </div>
@@ -954,7 +1086,6 @@ export default function DataValidator() {
                                     setPreCheckMessages([])
                                     setPreCheckReady(false)
                                     setPreCheckSummary('')
-                                    setPdfExtract('')
                                     setCurrentQuestions([])
                                     setQuestionAnswers({})
                                 }}

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import NavTabs from '@/components/NavTabs'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({
                         <div className="flex items-center h-14">
                             <h1 className="text-lg font-bold text-white">データ検証ツール</h1>
                             <span className="ml-3 text-xs text-slate-500">AI Data Validator</span>
+                            <NavTabs />
                         </div>
                     </div>
                 </header>

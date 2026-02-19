@@ -11,23 +11,6 @@ interface ValidateRequest {
     pdfBase64?: string
     model: string
     preCheckContext?: string
-    pdfExtract?: string
-}
-
-interface ColumnCorrection {
-    column: string
-    columnIndex: number
-    original: string
-    corrected: string
-}
-
-interface ValidationResult {
-    rowIndex: number
-    status: 'OK' | 'NG' | 'WARN'
-    details: string
-    correction?: string
-    corrections?: ColumnCorrection[]
-    sources?: string[]
 }
 
 export async function POST(request: NextRequest) {
@@ -41,7 +24,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body: ValidateRequest = await request.json()
-        const { rows, headers, prompt, mode, pdfBase64, model, preCheckContext, pdfExtract } = body
+        const { rows, headers, prompt, mode, pdfBase64, model, preCheckContext } = body
 
         if (!rows || rows.length === 0) {
             return NextResponse.json(
@@ -62,26 +45,10 @@ export async function POST(request: NextRequest) {
 
         const systemPrompt = `あなたはデータ検証の専門家です。与えられたデータの各行について、ユーザーの指示に従って正確性を確認してください。
 
-必ず以下のJSON形式で結果を返してください。JSON以外のテキストは含めないでください。
+必ず以下のJSON形式で結果を返してください。
+【重要】JSON以外のテキストは含めないでください。マークダウンのコードブロック(\`\`\`json ... \`\`\`)で囲まないでください。純粋なJSONのみ出力してください。
 
-{
-  "results": [
-    {
-      "rowIndex": 0,
-      "status": "OK" | "NG" | "WARN",
-      "details": "検証結果の具体的な説明",
-      "correction": "NGの場合、修正案のテキスト説明（任意）",
-      "corrections": [
-        {
-          "column": "ヘッダー名",
-          "original": "現在の値",
-          "corrected": "修正後の値"
-        }
-      ],
-      "sources": ["参照元URL（任意）"]
-    }
-  ]
-}
+{"results":[{"rowIndex":0,"status":"OK","details":"説明","corrections":[{"column":"ヘッダー名","original":"現在の値","corrected":"修正後の値"}],"sources":["URL"]}]}
 
 ステータスの基準:
 - OK: データが正確であることを確認できた
@@ -99,26 +66,19 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
         const userContent: Anthropic.ContentBlockParam[] = []
 
         // PDFモードの処理
-        if (mode === 'pdf') {
-            if (pdfExtract) {
-                userContent.push({
-                    type: 'text',
-                    text: `## 検証指示\n${prompt}\n\n## 原本データ（PDFから抽出済み）\n${pdfExtract}\n\n上記の原本データと以下のデータを照合してください。\n\n${dataText}`,
-                })
-            } else if (pdfBase64) {
-                userContent.push({
-                    type: 'document',
-                    source: {
-                        type: 'base64',
-                        media_type: 'application/pdf',
-                        data: pdfBase64,
-                    },
-                })
-                userContent.push({
-                    type: 'text',
-                    text: `## 検証指示\n${prompt}\n\n上記のPDFは原本データです。以下のデータがPDFの内容と一致しているか照合してください。\n\n${dataText}`,
-                })
-            }
+        if (mode === 'pdf' && pdfBase64) {
+            userContent.push({
+                type: 'document',
+                source: {
+                    type: 'base64',
+                    media_type: 'application/pdf',
+                    data: pdfBase64,
+                },
+            })
+            userContent.push({
+                type: 'text',
+                text: `## 検証指示\n${prompt}\n\n上記のPDFは原本データです。以下のデータがPDFの内容と一致しているか照合してください。\n\n${dataText}`,
+            })
         } else {
             userContent.push({
                 type: 'text',
@@ -129,7 +89,7 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
         // Claude API呼出パラメータ
         const streamParams: Anthropic.MessageCreateParamsNonStreaming = {
             model: model || 'claude-sonnet-4-5-20250929',
-            max_tokens: 8192,
+            max_tokens: 16384,
             system: systemPrompt + preCheckSection,
             messages: [{ role: 'user', content: userContent }],
         }
@@ -146,74 +106,36 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
             ]
         }
 
-        // Claude Streaming APIで実際のトークンを流し、Vercelタイムアウトを回避
+        // assistantプリフィルで「{」から開始させ、コードブロックを防止
+        streamParams.messages = [
+            ...streamParams.messages,
+            { role: 'assistant', content: '{' },
+        ]
+
         const messageStream = client.messages.stream(streamParams)
 
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                let fullText = ''
-
+                // プリフィルの「{」をストリーム先頭に追加
+                controller.enqueue(encoder.encode('{'))
                 try {
                     for await (const event of messageStream) {
                         if (
                             event.type === 'content_block_delta' &&
                             event.delta.type === 'text_delta'
                         ) {
-                            fullText += event.delta.text
                             controller.enqueue(encoder.encode(event.delta.text))
-                        } else {
-                            controller.enqueue(encoder.encode(' '))
                         }
                     }
-
-                    // ストリーム完了: 結果を処理
-                    let result
-                    if (!fullText.trim()) {
-                        result = { error: 'AIからのレスポンスにテキストが含まれていませんでした' }
-                    } else {
-                        try {
-                            let jsonText = fullText.trim()
-                            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)```/)
-                            if (jsonMatch) jsonText = jsonMatch[1].trim()
-                            const firstBrace = jsonText.indexOf('{')
-                            if (firstBrace > 0) jsonText = jsonText.substring(firstBrace)
-                            const parsed = JSON.parse(jsonText)
-                            let results: ValidationResult[] = parsed.results || parsed
-
-                            // correctionsのcolumnIndexを解決
-                            const headerIndexMap = new Map(headers.map((h, i) => [h, i]))
-                            for (const r of results) {
-                                if (r.corrections) {
-                                    r.corrections = r.corrections
-                                        .map(c => ({ ...c, columnIndex: headerIndexMap.get(c.column) ?? -1 }))
-                                        .filter(c => c.columnIndex >= 0)
-                                }
-                            }
-
-                            result = { results }
-                        } catch {
-                            result = {
-                                results: rows.map((_, i) => ({
-                                    rowIndex: i,
-                                    status: 'WARN' as const,
-                                    details: `AIレスポンスの解析に失敗しました。生テキスト: ${fullText.substring(0, 200)}...`,
-                                })),
-                            }
-                        }
-                    }
-
-                    controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify(result)))
                     controller.close()
                 } catch (error) {
+                    // エラーをJSONとして送信（クライアントが検出可能）
                     const errMsg = error instanceof Error ? error.message : '不明なエラー'
                     const isRateLimit = errMsg.includes('rate_limit') || errMsg.includes('429')
                     try {
-                        controller.enqueue(encoder.encode('\n__RESULT__\n' + JSON.stringify({
-                            error: errMsg,
-                            status: isRateLimit ? 429 : 500,
-                        })))
-                    } catch { /* controller already closed */ }
+                        controller.enqueue(encoder.encode('\n{"__stream_error":"' + errMsg.replace(/["\\\n]/g, ' ') + '","__status":' + (isRateLimit ? 429 : 500) + '}'))
+                    } catch { /* controller closed */ }
                     try { controller.close() } catch { /* already closed */ }
                 }
             }
@@ -229,7 +151,9 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
     } catch (error) {
         console.error('Validate data error:', error)
         const errMsg = error instanceof Error ? error.message : '不明なエラー'
-        const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429 : 500
+        const status = errMsg.includes('rate_limit') || errMsg.includes('429') ? 429
+            : errMsg.includes('overloaded') || errMsg.includes('529') ? 529
+            : 500
         return NextResponse.json({ error: errMsg }, { status })
     }
 }

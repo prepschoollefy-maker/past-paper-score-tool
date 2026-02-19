@@ -6,13 +6,15 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node -e \"const fs=require('fs');const s='node_modules/pdfjs-dist/build/pdf.worker.min.mjs';const d='public/pdf.worker.min.mjs';if(fs.existsSync(s)){fs.mkdirSync('public',{recursive:true});fs.copyFileSync(s,d);console.log('Copied pdf.worker.min.mjs to public/')}\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
+    "pdfjs-dist": "^4.9.155",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
