@@ -3,11 +3,16 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const maxDuration = 60
 
+interface TargetColumnDef {
+    column: string
+    description: string
+}
+
 interface FillRequest {
     rows: string[][]
     headers: string[]
     contextColumns: string[]
-    targetColumn: string
+    targetColumns: TargetColumnDef[]
     prompt: string
     model: string
     batchIndex: number
@@ -25,7 +30,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body: FillRequest = await request.json()
-        const { rows, headers, contextColumns, targetColumn, prompt, model, preCheckContext } = body
+        const { rows, headers, contextColumns, targetColumns, prompt, model, preCheckContext } = body
 
         if (!rows || rows.length === 0) {
             return NextResponse.json(
@@ -49,7 +54,18 @@ export async function POST(request: NextRequest) {
             ? `\n\n## 事前確認の要約（この内容を踏まえて入力してください）\n${preCheckContext}\n`
             : ''
 
-        const systemPrompt = `あなたはデータ入力の専門家です。与えられた各行について、コンテキスト情報を元にWeb検索を行い、「${targetColumn}」列の値を特定してください。
+        const targetColumnsDesc = targetColumns.map(tc =>
+            `- 「${tc.column}」: ${tc.description || '（説明なし）'}`
+        ).join('\n')
+
+        const valuesExample = targetColumns.map(tc =>
+            `"${tc.column}":"値"`
+        ).join(',')
+
+        const systemPrompt = `あなたはデータ入力の専門家です。与えられた各行について、コンテキスト情報を元にWeb検索を行い、以下の列の値を特定してください。
+
+## 入力対象列
+${targetColumnsDesc}
 
 ユーザーの指示:
 ${prompt}${preCheckSection}
@@ -57,32 +73,32 @@ ${prompt}${preCheckSection}
 必ず以下のJSON形式で結果を返してください。
 【重要】JSON以外のテキストは含めないでください。マークダウンのコードブロックで囲まないでください。純粋なJSONのみ出力してください。
 
-{"results":[{"rowIndex":0,"value":"検索で見つけた値","confidence":"high","source":"参照URL","note":"補足情報"}]}
+{"results":[{"rowIndex":0,"values":{${valuesExample}},"confidence":"high","note":"補足情報"}]}
 
 confidenceの基準:
 - high: 信頼できる情報源から確認できた
 - medium: 情報源はあるが確実性にやや欠ける
 - low: 推測を含む、または情報が見つからなかった
 
-valueが見つからない場合は空文字 "" を設定し、confidenceを "low"、noteに理由を記載してください。`
+値が見つからない場合は空文字 "" を設定し、confidenceを "low"、noteに理由を記載してください。`
 
-        const userContent = `## 対象データ（${rows.length}件）\n\n対象列: ${targetColumn}\n\n${rowsText}`
+        const targetColumnNames = targetColumns.map(tc => tc.column).join(', ')
+        const userContent = `## 対象データ（${rows.length}件）\n\n対象列: ${targetColumnNames}\n\n${rowsText}`
 
         // Claude API呼出パラメータ
         const streamParams: Anthropic.MessageCreateParamsNonStreaming = {
-            model: model || 'claude-sonnet-4-5-20250929',
+            model: model || 'claude-sonnet-4-6',
             max_tokens: 16384,
             system: systemPrompt,
             messages: [
                 { role: 'user', content: userContent },
-                { role: 'assistant', content: '{' },
             ],
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             tools: [
                 {
                     type: 'web_search_20250305',
                     name: 'web_search',
-                    max_uses: rows.length * 3,
+                    max_uses: Math.min(rows.length * 2, 40),
                 },
             ] as any,
         }
@@ -92,7 +108,6 @@ valueが見つからない場合は空文字 "" を設定し、confidenceを "lo
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                controller.enqueue(encoder.encode('{'))
                 try {
                     for await (const event of messageStream) {
                         if (

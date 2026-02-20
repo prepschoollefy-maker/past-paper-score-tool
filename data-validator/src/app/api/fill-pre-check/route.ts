@@ -3,11 +3,16 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const maxDuration = 60
 
+interface TargetColumnDef {
+    column: string
+    description: string
+}
+
 interface FillPreCheckRequest {
     headers: string[]
     sampleRows: string[][]
     contextColumns: string[]
-    targetColumn: string
+    targetColumns: TargetColumnDef[]
     prompt: string
     model: string
     messages: { role: 'user' | 'assistant'; content: string }[]
@@ -24,24 +29,32 @@ export async function POST(request: NextRequest) {
         }
 
         const body: FillPreCheckRequest = await request.json()
-        const { headers, sampleRows, contextColumns, targetColumn, prompt, model, messages } = body
+        const { headers, sampleRows, contextColumns, targetColumns, prompt, model, messages } = body
 
         const client = new Anthropic({ apiKey })
 
         const contextIndices = contextColumns.map(col => headers.indexOf(col)).filter(i => i >= 0)
+        const targetColumnNames = targetColumns.map(tc => tc.column)
         const tableRows = sampleRows.map((row, i) => {
             const context = contextIndices.map(ci => `${headers[ci]}: ${row[ci] || '(空)'}`).join(', ')
-            const targetIdx = headers.indexOf(targetColumn)
-            const targetVal = targetIdx >= 0 ? row[targetIdx] || '(空)' : '(列なし)'
-            return `行${i + 1}: ${context} → ${targetColumn}: ${targetVal}`
+            const targetParts = targetColumnNames.map(col => {
+                const targetIdx = headers.indexOf(col)
+                const targetVal = targetIdx >= 0 ? row[targetIdx] || '(空)' : '(列なし)'
+                return `${col}: ${targetVal}`
+            }).join(', ')
+            return `行${i + 1}: ${context} → ${targetParts}`
         }).join('\n')
+
+        const targetColumnsDesc = targetColumns.map(tc =>
+            `- 「${tc.column}」: ${tc.description || '（説明なし）'}`
+        ).join('\n')
 
         const systemPrompt = `あなたはデータ入力タスクの事前確認を行う専門家です。
 
 ユーザーがテーブルデータの空欄列をAI Web検索で自動入力しようとしています。
 
 入力タスクを正確に行うために、以下を確認してください：
-1. 対象列「${targetColumn}」に何を入力するか正しく理解できているか
+1. 各対象列に何を入力するか正しく理解できているか
 2. 参照列の情報（${contextColumns.join('、')}）から目的の情報を特定できるか
 3. 検索する情報の粒度・形式（数値、テキスト、URL等）が明確か
 4. 曖昧な点や、入力精度を上げるために確認すべきことがないか
@@ -65,8 +78,8 @@ export async function POST(request: NextRequest) {
 ## 入力プロンプト（最重要：この内容に基づいて質問してください）
 ${prompt}
 
-## 対象列
-${targetColumn}
+## 入力対象列
+${targetColumnsDesc}
 
 ## 参照列
 ${contextColumns.join(', ')}
@@ -82,11 +95,10 @@ ${tableRows}`,
             }
         }
 
-        // assistantプリフィルで「{」から開始させ、コードブロックを防止
-        apiMessages.push({ role: 'assistant', content: '{' })
+
 
         const messageStream = client.messages.stream({
-            model: model || 'claude-sonnet-4-5-20250929',
+            model: model || 'claude-sonnet-4-6',
             max_tokens: 4096,
             system: systemPrompt,
             messages: apiMessages,
@@ -95,8 +107,6 @@ ${tableRows}`,
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                // プリフィルの「{」をストリーム先頭に追加
-                controller.enqueue(encoder.encode('{'))
                 try {
                     for await (const event of messageStream) {
                         if (

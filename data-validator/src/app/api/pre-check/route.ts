@@ -105,11 +105,8 @@ ${tableRows}`,
             }
         }
 
-        // assistantプリフィルで「{」から開始させ、コードブロックを防止
-        apiMessages.push({ role: 'assistant', content: '{' })
-
         const messageStream = client.messages.stream({
-            model: model || 'claude-sonnet-4-5-20250929',
+            model: model || 'claude-sonnet-4-6',
             max_tokens: 4096,
             system: systemPrompt,
             messages: apiMessages,
@@ -118,8 +115,6 @@ ${tableRows}`,
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                // プリフィルの「{」をストリーム先頭に追加
-                controller.enqueue(encoder.encode('{'))
                 try {
                     for await (const event of messageStream) {
                         if (

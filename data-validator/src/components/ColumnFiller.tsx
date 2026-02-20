@@ -21,10 +21,14 @@ import ExcelJS from 'exceljs'
 
 interface FillResult {
     rowIndex: number
-    value: string
+    values: Record<string, string>
     confidence: 'high' | 'medium' | 'low'
-    source: string
     note: string
+}
+
+interface TargetColumnConfig {
+    column: string      // 列名（既存 or 新規、自由入力）
+    description: string // この列に何を入力するか（AIへの指示）
 }
 
 interface BatchResult {
@@ -133,11 +137,13 @@ const FILL_PRESETS = [
 ]
 
 const MODELS = [
-    { value: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5（推奨）' },
+    { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6（推奨）' },
+    { value: 'claude-opus-4-6', label: 'Opus 4.6（最高精度）' },
+    { value: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5' },
     { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5（高速・低コスト）' },
 ]
 
-const BATCH_SIZES = [10, 20, 30, 50]
+const BATCH_SIZES = [5, 10, 15, 20, 30]
 
 // --- Excel セル値取得 ---
 const getCellText = (cell: ExcelJS.Cell): string => {
@@ -182,6 +188,9 @@ const getCellText = (cell: ExcelJS.Cell): string => {
     return String(value)
 }
 
+// --- ユーティリティ ---
+const hasAnyValue = (r: FillResult) => Object.values(r.values || {}).some(v => v?.trim())
+
 // --- メインコンポーネント ---
 
 export default function ColumnFiller() {
@@ -191,12 +200,13 @@ export default function ColumnFiller() {
     const [csvRows, setCsvRows] = useState<string[][]>([])
 
     // 設定
-    const [targetColumn, setTargetColumn] = useState('')
-    const [newColumnName, setNewColumnName] = useState('')
+    const [targetColumns, setTargetColumns] = useState<TargetColumnConfig[]>([
+        { column: '', description: '' }
+    ])
     const [contextColumns, setContextColumns] = useState<string[]>([])
     const [prompt, setPrompt] = useState(FILL_PRESETS[0].prompt)
     const [selectedPreset, setSelectedPreset] = useState(0)
-    const [batchSize, setBatchSize] = useState(30)
+    const [batchSize, setBatchSize] = useState(10)
     const [model, setModel] = useState(MODELS[0].value)
     const [skipExisting, setSkipExisting] = useState(true)
 
@@ -270,8 +280,7 @@ export default function ColumnFiller() {
         setCsvFile(f)
         setBatchResults([])
         setError(null)
-        setTargetColumn('')
-        setNewColumnName('')
+        setTargetColumns([{ column: '', description: '' }])
         setContextColumns([])
 
         if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
@@ -282,21 +291,19 @@ export default function ColumnFiller() {
         }
     }, [parseCSV, parseExcel])
 
-    // --- 対象列の実効名 ---
-    const effectiveTargetColumn = targetColumn === '__new__' ? newColumnName : targetColumn
-    const targetColumnIndex = csvHeaders.indexOf(effectiveTargetColumn)
-
-    // 空欄列候補（50%以上空欄の列）
-    const emptyColumnCandidates = csvHeaders.filter((header) => {
-        const colIdx = csvHeaders.indexOf(header)
-        const emptyCount = csvRows.filter(row => !row[colIdx]?.trim()).length
-        return emptyCount > csvRows.length * 0.3
-    })
+    // --- 対象列の実効名リスト ---
+    const effectiveTargetColumns = targetColumns
+        .map(tc => tc.column.trim())
+        .filter(Boolean)
 
     // スキップ対象行を除いた処理対象行
     const targetRows = csvRows.map((row, i) => ({ row, originalIndex: i })).filter(({ row }) => {
-        if (!skipExisting || targetColumnIndex < 0) return true
-        return !row[targetColumnIndex]?.trim()
+        if (!skipExisting) return true
+        // 全target列に値がある行はスキップ（いずれかが空なら処理対象）
+        return effectiveTargetColumns.some(col => {
+            const idx = csvHeaders.indexOf(col)
+            return idx < 0 || !row[idx]?.trim()
+        })
     })
 
     // --- プリセット選択 ---
@@ -330,7 +337,10 @@ export default function ColumnFiller() {
                     headers: csvHeaders,
                     sampleRows: csvRows.slice(0, 100),
                     contextColumns,
-                    targetColumn: effectiveTargetColumn,
+                    targetColumns: effectiveTargetColumns.map(col => {
+                        const tc = targetColumns.find(t => t.column.trim() === col)
+                        return { column: col, description: tc?.description || '' }
+                    }),
                     prompt,
                     model,
                     messages,
@@ -395,15 +405,15 @@ export default function ColumnFiller() {
         } finally {
             setIsPreChecking(false)
         }
-    }, [csvHeaders, csvRows, contextColumns, effectiveTargetColumn, prompt, model])
+    }, [csvHeaders, csvRows, contextColumns, effectiveTargetColumns, targetColumns, prompt, model])
 
     const startFillPreCheck = useCallback(() => {
-        if (csvRows.length === 0 || !prompt.trim() || !effectiveTargetColumn || contextColumns.length === 0) return
+        if (csvRows.length === 0 || !prompt.trim() || effectiveTargetColumns.length === 0 || contextColumns.length === 0) return
         setPreCheckMessages([])
         setPreCheckReady(false)
         setPreCheckSummary('')
         callFillPreCheck([])
-    }, [csvRows, prompt, effectiveTargetColumn, contextColumns, callFillPreCheck])
+    }, [csvRows, prompt, effectiveTargetColumns, contextColumns, callFillPreCheck])
 
     const submitFillAnswers = useCallback(() => {
         const answerText = currentQuestions
@@ -425,7 +435,7 @@ export default function ColumnFiller() {
 
     // --- 実行 ---
     const runFill = useCallback(async () => {
-        if (targetRows.length === 0 || !effectiveTargetColumn || contextColumns.length === 0) return
+        if (targetRows.length === 0 || effectiveTargetColumns.length === 0 || contextColumns.length === 0) return
 
         setIsRunning(true)
         setError(null)
@@ -467,7 +477,10 @@ export default function ColumnFiller() {
                             rows: batchRows,
                             headers: csvHeaders,
                             contextColumns,
-                            targetColumn: effectiveTargetColumn,
+                            targetColumns: effectiveTargetColumns.map(col => {
+                                const tc = targetColumns.find(t => t.column.trim() === col)
+                                return { column: col, description: tc?.description || '' }
+                            }),
                             prompt,
                             model,
                             batchIndex: batchIdx,
@@ -557,7 +570,7 @@ export default function ColumnFiller() {
                         })
                     )
 
-                    const filledInBatch = globalResults.filter(r => r.value?.trim()).length
+                    const filledInBatch = globalResults.filter(r => Object.values(r.values || {}).some(v => v?.trim())).length
                     totalFilled += filledInBatch
                     setFilledCount(totalFilled)
 
@@ -583,7 +596,7 @@ export default function ColumnFiller() {
         }
 
         setIsRunning(false)
-    }, [targetRows, effectiveTargetColumn, contextColumns, csvHeaders, prompt, model, batchSize, buildPreCheckContext])
+    }, [targetRows, effectiveTargetColumns, targetColumns, contextColumns, csvHeaders, prompt, model, batchSize, buildPreCheckContext])
 
     const stopFill = useCallback(() => {
         abortRef.current = true
@@ -593,16 +606,16 @@ export default function ColumnFiller() {
     const allResults = batchResults.flatMap(br => br.results)
     const filteredResults = (() => {
         switch (filter) {
-            case 'FILLED': return allResults.filter(r => r.value?.trim())
-            case 'EMPTY': return allResults.filter(r => !r.value?.trim())
+            case 'FILLED': return allResults.filter(r => hasAnyValue(r))
+            case 'EMPTY': return allResults.filter(r => !hasAnyValue(r))
             case 'LOW': return allResults.filter(r => r.confidence === 'low')
             default: return allResults
         }
     })()
 
     const counts = {
-        filled: allResults.filter(r => r.value?.trim()).length,
-        empty: allResults.filter(r => !r.value?.trim()).length,
+        filled: allResults.filter(r => hasAnyValue(r)).length,
+        empty: allResults.filter(r => !hasAnyValue(r)).length,
         high: allResults.filter(r => r.confidence === 'high').length,
         medium: allResults.filter(r => r.confidence === 'medium').length,
         low: allResults.filter(r => r.confidence === 'low').length,
@@ -621,10 +634,14 @@ export default function ColumnFiller() {
 
         // 出力ヘッダー: 元ヘッダー + 新列（存在しない場合）
         const outputHeaders = [...csvHeaders]
-        let targetColIdx = csvHeaders.indexOf(effectiveTargetColumn)
-        if (targetColIdx < 0) {
-            outputHeaders.push(effectiveTargetColumn)
-            targetColIdx = outputHeaders.length - 1
+        const targetColIndices: Record<string, number> = {}
+        for (const col of effectiveTargetColumns) {
+            let idx = outputHeaders.indexOf(col)
+            if (idx < 0) {
+                outputHeaders.push(col)
+                idx = outputHeaders.length - 1
+            }
+            targetColIndices[col] = idx
         }
 
         // シート1: 入力済みデータ
@@ -639,25 +656,32 @@ export default function ColumnFiller() {
 
         for (let i = 0; i < csvRows.length; i++) {
             const rowValues = [...csvRows[i]]
-            // 新列の場合は空文字を埋める
             while (rowValues.length < outputHeaders.length) {
                 rowValues.push('')
             }
 
             const result = resultMap.get(i)
-            if (result && result.value?.trim()) {
-                rowValues[targetColIdx] = result.value
+            if (result) {
+                for (const col of effectiveTargetColumns) {
+                    const val = result.values?.[col]
+                    if (val?.trim()) {
+                        rowValues[targetColIndices[col]] = val
+                    }
+                }
             }
 
             const excelRow = ws1.addRow(rowValues)
 
-            // 入力されたセルを色分け
-            if (result && result.value?.trim()) {
-                const cell = excelRow.getCell(targetColIdx + 1)
+            if (result && hasAnyValue(result)) {
                 const color = result.confidence === 'high' ? 'FFDFF0D8'
                     : result.confidence === 'medium' ? 'FFFFFFCC'
                     : 'FFFFCCCC'
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }
+                for (const col of effectiveTargetColumns) {
+                    if (result.values?.[col]?.trim()) {
+                        const cell = excelRow.getCell(targetColIndices[col] + 1)
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }
+                    }
+                }
             }
         }
 
@@ -672,7 +696,7 @@ export default function ColumnFiller() {
 
         // シート2: 入力詳細
         const ws2 = wb.addWorksheet('入力詳細')
-        const detailHeaders = ['行番号', ...contextColumns, effectiveTargetColumn, 'confidence', '参照元', '備考']
+        const detailHeaders = ['行番号', ...contextColumns, ...effectiveTargetColumns, 'confidence', '備考']
         const detailHeaderRow = ws2.addRow(detailHeaders)
         for (let c = 1; c <= detailHeaders.length; c++) {
             const cell = detailHeaderRow.getCell(c)
@@ -687,17 +711,16 @@ export default function ColumnFiller() {
                 const idx = csvHeaders.indexOf(col)
                 return idx >= 0 ? row[idx] : ''
             })
+            const targetValues = effectiveTargetColumns.map(col => r.values?.[col] || '')
             const excelRow = ws2.addRow([
                 r.rowIndex + 1,
                 ...contextValues,
-                r.value || '',
+                ...targetValues,
                 r.confidence,
-                r.source || '',
                 r.note || '',
             ])
 
-            // confidence色分け
-            const confCell = excelRow.getCell(contextColumns.length + 3)
+            const confCell = excelRow.getCell(1 + contextColumns.length + effectiveTargetColumns.length + 1)
             const color = r.confidence === 'high' ? 'FFDFF0D8'
                 : r.confidence === 'medium' ? 'FFFFFFCC'
                 : 'FFFFCCCC'
@@ -720,10 +743,10 @@ export default function ColumnFiller() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `column_fill_${effectiveTargetColumn}_${new Date().toISOString().slice(0, 10)}.xlsx`
+        a.download = `column_fill_${effectiveTargetColumns.join('_')}_${new Date().toISOString().slice(0, 10)}.xlsx`
         a.click()
         URL.revokeObjectURL(url)
-    }, [allResults, csvHeaders, csvRows, effectiveTargetColumn, contextColumns])
+    }, [allResults, csvHeaders, csvRows, effectiveTargetColumns, contextColumns])
 
     // --- confidence色 ---
     const confidenceColor = (conf: string) => {
@@ -826,44 +849,61 @@ export default function ColumnFiller() {
                                 <p className="text-sm text-slate-400">対象列・参照列・プロンプトを設定してください</p>
                             </div>
 
-                            {/* 対象列 */}
+                            {/* 対象列（複数） */}
                             <div>
                                 <label className="block text-sm text-slate-400 mb-1">入力対象列</label>
-                                <select
-                                    value={targetColumn}
-                                    onChange={(e) => setTargetColumn(e.target.value)}
-                                    className="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                >
-                                    <option value="">選択してください...</option>
-                                    {emptyColumnCandidates.length > 0 && (
-                                        <optgroup label="空欄が多い列">
-                                            {emptyColumnCandidates.map(h => {
-                                                const colIdx = csvHeaders.indexOf(h)
-                                                const emptyCount = csvRows.filter(row => !row[colIdx]?.trim()).length
-                                                return (
-                                                    <option key={h} value={h}>
-                                                        {h}（{emptyCount}/{csvRows.length}行が空欄）
-                                                    </option>
-                                                )
-                                            })}
-                                        </optgroup>
-                                    )}
-                                    <optgroup label="全ての列">
-                                        {csvHeaders.map(h => (
-                                            <option key={h} value={h}>{h}</option>
-                                        ))}
-                                    </optgroup>
-                                    <option value="__new__">+ 新規列を追加</option>
-                                </select>
-                                {targetColumn === '__new__' && (
-                                    <input
-                                        type="text"
-                                        value={newColumnName}
-                                        onChange={(e) => setNewColumnName(e.target.value)}
-                                        placeholder="新しい列名を入力..."
-                                        className="mt-2 w-full bg-slate-700 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                    />
-                                )}
+                                <datalist id="column-suggestions">
+                                    {csvHeaders.map(h => (
+                                        <option key={h} value={h} />
+                                    ))}
+                                </datalist>
+                                <div className="space-y-2">
+                                    {targetColumns.map((tc, idx) => (
+                                        <div key={idx} className="flex gap-2 items-center">
+                                            <input
+                                                type="text"
+                                                list="column-suggestions"
+                                                value={tc.column}
+                                                onChange={(e) => {
+                                                    const updated = [...targetColumns]
+                                                    updated[idx] = { ...updated[idx], column: e.target.value }
+                                                    setTargetColumns(updated)
+                                                }}
+                                                placeholder="列名（既存列 or 新規列名）"
+                                                className="w-48 bg-slate-700 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={tc.description}
+                                                onChange={(e) => {
+                                                    const updated = [...targetColumns]
+                                                    updated[idx] = { ...updated[idx], description: e.target.value }
+                                                    setTargetColumns(updated)
+                                                }}
+                                                placeholder="この列に何を入力するか"
+                                                className="flex-1 bg-slate-700 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                            />
+                                            {targetColumns.length > 1 && (
+                                                <button
+                                                    onClick={() => setTargetColumns(targetColumns.filter((_, i) => i !== idx))}
+                                                    className="px-2 py-2 text-slate-500 hover:text-red-400 transition-colors text-sm"
+                                                    title="この列を削除"
+                                                >
+                                                    &times;
+                                                </button>
+                                            )}
+                                            {tc.column.trim() && !csvHeaders.includes(tc.column.trim()) && (
+                                                <span className="text-xs text-amber-400 whitespace-nowrap">新規列</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button
+                                        onClick={() => setTargetColumns([...targetColumns, { column: '', description: '' }])}
+                                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-600 text-slate-400 hover:border-emerald-500 hover:text-emerald-400 transition-colors"
+                                    >
+                                        + 列を追加（複数列同時入力）
+                                    </button>
+                                </div>
                             </div>
 
                             {/* 参照列 */}
@@ -961,7 +1001,7 @@ export default function ColumnFiller() {
                             </div>
 
                             {/* 処理見積もり */}
-                            {effectiveTargetColumn && (
+                            {effectiveTargetColumns.length > 0 && (
                                 <p className="text-xs text-slate-500">
                                     処理対象: {targetRows.length}行 / {batchSize}件ずつ = {Math.ceil(targetRows.length / batchSize)}バッチ
                                     {' / '}
@@ -982,7 +1022,7 @@ export default function ColumnFiller() {
             )}
 
             {/* Step 3: 事前確認（推奨） */}
-            {csvRows.length > 0 && effectiveTargetColumn && contextColumns.length > 0 && prompt.trim() && (
+            {csvRows.length > 0 && effectiveTargetColumns.length > 0 && contextColumns.length > 0 && prompt.trim() && (
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                     <div className="flex items-start gap-4">
                         <div className="w-12 h-12 bg-teal-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -1094,7 +1134,7 @@ export default function ColumnFiller() {
                         {!isRunning ? (
                             <button
                                 onClick={runFill}
-                                disabled={!effectiveTargetColumn || contextColumns.length === 0 || !prompt.trim() || targetRows.length === 0}
+                                disabled={effectiveTargetColumns.length === 0 || contextColumns.length === 0 || !prompt.trim() || targetRows.length === 0}
                                 className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                             >
                                 <Play className="w-5 h-5" />
@@ -1204,7 +1244,7 @@ export default function ColumnFiller() {
                                 className={`border rounded-lg px-4 py-3 ${confidenceBg(r.confidence)}`}
                             >
                                 <div className="flex items-start gap-3">
-                                    {r.value?.trim() ? (
+                                    {hasAnyValue(r) ? (
                                         <CheckCircle2 className={`w-5 h-5 flex-shrink-0 ${confidenceColor(r.confidence)}`} />
                                     ) : (
                                         <AlertCircle className="w-5 h-5 flex-shrink-0 text-slate-500" />
@@ -1227,24 +1267,15 @@ export default function ColumnFiller() {
                                                 return idx >= 0 ? csvRows[r.rowIndex]?.[idx] : ''
                                             }).filter(Boolean).join(' / ')}
                                         </p>
-                                        {/* 入力値 */}
-                                        <p className="text-sm text-slate-200 font-medium">
-                                            {effectiveTargetColumn}: {r.value || <span className="text-slate-500">(未入力)</span>}
-                                        </p>
+                                        {/* 入力値（複数列） */}
+                                        {effectiveTargetColumns.map(col => (
+                                            <p key={col} className="text-sm text-slate-200 font-medium">
+                                                {col}: {r.values?.[col]?.trim() ? r.values[col] : <span className="text-slate-500">(未入力)</span>}
+                                            </p>
+                                        ))}
                                         {/* 補足 */}
                                         {r.note && (
                                             <p className="text-xs text-slate-400 mt-1">{r.note}</p>
-                                        )}
-                                        {/* 参照元 */}
-                                        {r.source && (
-                                            <a
-                                                href={r.source}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs text-blue-400 hover:underline truncate block mt-1 max-w-[400px]"
-                                            >
-                                                {r.source}
-                                            </a>
                                         )}
                                     </div>
                                 </div>

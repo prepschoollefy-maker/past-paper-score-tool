@@ -88,7 +88,7 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
 
         // Claude API呼出パラメータ
         const streamParams: Anthropic.MessageCreateParamsNonStreaming = {
-            model: model || 'claude-sonnet-4-5-20250929',
+            model: model || 'claude-sonnet-4-6',
             max_tokens: 16384,
             system: systemPrompt + preCheckSection,
             messages: [{ role: 'user', content: userContent }],
@@ -106,19 +106,11 @@ NGまたはWARNの場合、修正が必要な列ごとにcorrections配列で具
             ]
         }
 
-        // assistantプリフィルで「{」から開始させ、コードブロックを防止
-        streamParams.messages = [
-            ...streamParams.messages,
-            { role: 'assistant', content: '{' },
-        ]
-
         const messageStream = client.messages.stream(streamParams)
 
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
             async start(controller) {
-                // プリフィルの「{」をストリーム先頭に追加
-                controller.enqueue(encoder.encode('{'))
                 try {
                     for await (const event of messageStream) {
                         if (
