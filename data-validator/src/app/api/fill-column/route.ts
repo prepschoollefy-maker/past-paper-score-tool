@@ -11,6 +11,7 @@ interface FillRequest {
     prompt: string
     model: string
     batchIndex: number
+    preCheckContext?: string
 }
 
 export async function POST(request: NextRequest) {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body: FillRequest = await request.json()
-        const { rows, headers, contextColumns, targetColumn, prompt, model } = body
+        const { rows, headers, contextColumns, targetColumn, prompt, model, preCheckContext } = body
 
         if (!rows || rows.length === 0) {
             return NextResponse.json(
@@ -44,10 +45,14 @@ export async function POST(request: NextRequest) {
             return `行${i}: ${context}`
         }).join('\n')
 
+        const preCheckSection = preCheckContext
+            ? `\n\n## 事前確認の要約（この内容を踏まえて入力してください）\n${preCheckContext}\n`
+            : ''
+
         const systemPrompt = `あなたはデータ入力の専門家です。与えられた各行について、コンテキスト情報を元にWeb検索を行い、「${targetColumn}」列の値を特定してください。
 
 ユーザーの指示:
-${prompt}
+${prompt}${preCheckSection}
 
 必ず以下のJSON形式で結果を返してください。
 【重要】JSON以外のテキストは含めないでください。マークダウンのコードブロックで囲まないでください。純粋なJSONのみ出力してください。

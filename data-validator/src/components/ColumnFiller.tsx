@@ -12,6 +12,8 @@ import {
     Loader2,
     Search,
     Columns,
+    MessageCircle,
+    Send,
 } from 'lucide-react'
 import ExcelJS from 'exceljs'
 
@@ -32,6 +34,10 @@ interface BatchResult {
 }
 
 type FilterStatus = 'ALL' | 'FILLED' | 'EMPTY' | 'LOW'
+
+interface ChatMessage { role: 'user' | 'assistant'; content: string }
+interface PreCheckQuestion { id: string; question: string }
+interface PreCheckResponse { message: string; questions: PreCheckQuestion[]; ready: boolean }
 
 // --- JSON修復パーサー ---
 function sanitizeJsonString(text: string): string {
@@ -206,6 +212,14 @@ export default function ColumnFiller() {
     // 結果フィルター
     const [filter, setFilter] = useState<FilterStatus>('ALL')
 
+    // 事前確認
+    const [preCheckMessages, setPreCheckMessages] = useState<ChatMessage[]>([])
+    const [isPreChecking, setIsPreChecking] = useState(false)
+    const [preCheckReady, setPreCheckReady] = useState(false)
+    const [currentQuestions, setCurrentQuestions] = useState<PreCheckQuestion[]>([])
+    const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({})
+    const [preCheckSummary, setPreCheckSummary] = useState('')
+
     // --- CSV解析 ---
     const parseCSV = useCallback((text: string) => {
         const lines = text.split('\n').filter(line => line.trim())
@@ -303,6 +317,112 @@ export default function ColumnFiller() {
         )
     }, [])
 
+    // --- 事前確認 ---
+    const callFillPreCheck = useCallback(async (messages: ChatMessage[]) => {
+        setIsPreChecking(true)
+        setError(null)
+
+        try {
+            const res = await fetch('/api/fill-pre-check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    headers: csvHeaders,
+                    sampleRows: csvRows.slice(0, 100),
+                    contextColumns,
+                    targetColumn: effectiveTargetColumn,
+                    prompt,
+                    model,
+                    messages,
+                }),
+            })
+
+            if (!res.ok) {
+                let errMsg = `HTTP ${res.status}`
+                try {
+                    const errData = await res.json()
+                    errMsg = errData.error || errMsg
+                } catch {
+                    const text = await res.text().catch(() => '')
+                    if (text) errMsg = text.slice(0, 200)
+                }
+                setError(errMsg)
+                return
+            }
+
+            const rawText = await res.text()
+
+            const streamErrorMatch = rawText.match(/"__stream_error"\s*:\s*"([^"]*)"/)
+            if (streamErrorMatch) {
+                setError(streamErrorMatch[1])
+                return
+            }
+
+            const trimmed = rawText.trim()
+            if (!trimmed) {
+                setError('AIからの応答がありませんでした')
+                return
+            }
+
+            const parsed = tryParseJson(trimmed) as Record<string, unknown> | null
+            if (!parsed || typeof parsed !== 'object') {
+                setError(`AIレスポンスの解析に失敗しました。\n\n応答冒頭: ${trimmed.slice(0, 200)}`)
+                return
+            }
+            const data: PreCheckResponse = {
+                message: typeof parsed.message === 'string' ? parsed.message : '',
+                questions: Array.isArray(parsed.questions) ? parsed.questions as PreCheckQuestion[] : [],
+                ready: parsed.ready === true,
+            }
+
+            const assistantContent = JSON.stringify({
+                message: data.message,
+                questions: data.questions,
+                ready: data.ready,
+            })
+            setPreCheckMessages(prev => [...prev, { role: 'assistant', content: assistantContent }])
+
+            if (data.ready) {
+                setPreCheckReady(true)
+                setPreCheckSummary(data.message)
+                setCurrentQuestions([])
+            } else {
+                setCurrentQuestions(data.questions)
+                setQuestionAnswers({})
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '通信エラー')
+        } finally {
+            setIsPreChecking(false)
+        }
+    }, [csvHeaders, csvRows, contextColumns, effectiveTargetColumn, prompt, model])
+
+    const startFillPreCheck = useCallback(() => {
+        if (csvRows.length === 0 || !prompt.trim() || !effectiveTargetColumn || contextColumns.length === 0) return
+        setPreCheckMessages([])
+        setPreCheckReady(false)
+        setPreCheckSummary('')
+        callFillPreCheck([])
+    }, [csvRows, prompt, effectiveTargetColumn, contextColumns, callFillPreCheck])
+
+    const submitFillAnswers = useCallback(() => {
+        const answerText = currentQuestions
+            .map(q => `${q.question}\n→ ${questionAnswers[q.id] || '（未回答）'}`)
+            .join('\n\n')
+
+        const newUserMsg: ChatMessage = { role: 'user', content: answerText }
+        const updatedMessages = [...preCheckMessages, newUserMsg]
+        setPreCheckMessages(updatedMessages)
+        setCurrentQuestions([])
+        setQuestionAnswers({})
+        callFillPreCheck(updatedMessages)
+    }, [currentQuestions, questionAnswers, preCheckMessages, callFillPreCheck])
+
+    const buildPreCheckContext = useCallback((): string | undefined => {
+        if (!preCheckSummary) return undefined
+        return preCheckSummary
+    }, [preCheckSummary])
+
     // --- 実行 ---
     const runFill = useCallback(async () => {
         if (targetRows.length === 0 || !effectiveTargetColumn || contextColumns.length === 0) return
@@ -351,6 +471,7 @@ export default function ColumnFiller() {
                             prompt,
                             model,
                             batchIndex: batchIdx,
+                            preCheckContext: buildPreCheckContext(),
                         }),
                     })
 
@@ -462,7 +583,7 @@ export default function ColumnFiller() {
         }
 
         setIsRunning(false)
-    }, [targetRows, effectiveTargetColumn, contextColumns, csvHeaders, prompt, model, batchSize])
+    }, [targetRows, effectiveTargetColumn, contextColumns, csvHeaders, prompt, model, batchSize, buildPreCheckContext])
 
     const stopFill = useCallback(() => {
         abortRef.current = true
@@ -860,7 +981,113 @@ export default function ColumnFiller() {
                 </div>
             )}
 
-            {/* Step 3: 実行・進捗 */}
+            {/* Step 3: 事前確認（推奨） */}
+            {csvRows.length > 0 && effectiveTargetColumn && contextColumns.length > 0 && prompt.trim() && (
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-teal-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <MessageCircle className="w-6 h-6 text-teal-400" />
+                        </div>
+                        <div className="flex-1 space-y-4">
+                            <div>
+                                <h2 className="font-semibold text-white mb-1">3. 事前確認（推奨）</h2>
+                                <p className="text-sm text-slate-400">入力前にAIと検索内容・入力方針を擦り合わせます</p>
+                            </div>
+
+                            {/* 初期状態: 開始ボタン */}
+                            {preCheckMessages.length === 0 && !isPreChecking && (
+                                <button
+                                    onClick={startFillPreCheck}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors text-sm font-medium"
+                                >
+                                    <MessageCircle className="w-4 h-4" />
+                                    事前確認を開始
+                                </button>
+                            )}
+
+                            {/* ローディング */}
+                            {isPreChecking && (
+                                <div className="flex items-center gap-3 py-4">
+                                    <Loader2 className="w-5 h-5 text-teal-400 animate-spin" />
+                                    <span className="text-sm text-slate-300">AIが確認事項を整理中...</span>
+                                </div>
+                            )}
+
+                            {/* 準備完了 */}
+                            {preCheckReady && (
+                                <div className="bg-teal-900/30 border border-teal-700/50 rounded-lg px-4 py-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <CheckCircle2 className="w-5 h-5 text-teal-400" />
+                                        <span className="text-sm font-medium text-teal-300">事前確認完了</span>
+                                    </div>
+                                    <p className="text-sm text-slate-300 whitespace-pre-wrap">{preCheckSummary}</p>
+                                </div>
+                            )}
+
+                            {/* 質問カード */}
+                            {!isPreChecking && currentQuestions.length > 0 && (
+                                <>
+                                    {/* AIメッセージ（あれば） */}
+                                    {preCheckMessages.length > 0 && (() => {
+                                        const lastAssistant = [...preCheckMessages].reverse().find(m => m.role === 'assistant')
+                                        if (!lastAssistant) return null
+                                        try {
+                                            const parsed = JSON.parse(lastAssistant.content)
+                                            if (parsed.message) {
+                                                return (
+                                                    <p className="text-sm text-slate-300 whitespace-pre-wrap">{parsed.message}</p>
+                                                )
+                                            }
+                                        } catch { /* ignore */ }
+                                        return null
+                                    })()}
+
+                                    <div className="space-y-3">
+                                        {currentQuestions.map((q) => (
+                                            <div key={q.id} className="bg-slate-700/50 border border-slate-600 rounded-lg p-4">
+                                                <label className="block text-sm text-slate-200 mb-2">{q.question}</label>
+                                                <input
+                                                    type="text"
+                                                    value={questionAnswers[q.id] || ''}
+                                                    onChange={(e) => setQuestionAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                                    placeholder="回答を入力..."
+                                                    className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                />
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={submitFillAnswers}
+                                            disabled={currentQuestions.some(q => !questionAnswers[q.id]?.trim())}
+                                            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                                        >
+                                            <Send className="w-4 h-4" />
+                                            回答を送信
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* リセットボタン */}
+                            {(preCheckMessages.length > 0 || preCheckReady) && !isPreChecking && (
+                                <button
+                                    onClick={() => {
+                                        setPreCheckMessages([])
+                                        setPreCheckReady(false)
+                                        setPreCheckSummary('')
+                                        setCurrentQuestions([])
+                                        setQuestionAnswers({})
+                                    }}
+                                    className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
+                                >
+                                    リセットしてやり直す
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Step 4: 実行・進捗 */}
             {csvRows.length > 0 && (
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                     <div className="flex items-center gap-4">
@@ -871,7 +1098,7 @@ export default function ColumnFiller() {
                                 className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                             >
                                 <Play className="w-5 h-5" />
-                                入力開始（{targetRows.length}行）
+                                入力開始{preCheckMessages.length === 0 ? '（事前確認スキップ）' : ''}（{targetRows.length}行）
                             </button>
                         ) : (
                             <button
@@ -931,7 +1158,7 @@ export default function ColumnFiller() {
                 </div>
             )}
 
-            {/* Step 4: 結果テーブル */}
+            {/* Step 5: 結果テーブル */}
             {allResults.length > 0 && (
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                     <div className="flex items-center justify-between mb-4">
