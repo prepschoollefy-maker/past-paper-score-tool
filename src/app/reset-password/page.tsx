@@ -51,8 +51,21 @@ export default function ResetPasswordPage() {
             setError(`パスワードの更新に失敗しました: ${error.message}`)
         } else {
             setSuccess(true)
+            // ロールに応じてリダイレクト先を決定
+            const { data: { user: currentUser } } = await supabase.auth.getUser()
+            let redirectTo = '/dashboard'
+            if (currentUser) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', currentUser.id)
+                    .single()
+                if (profile?.role === 'admin') {
+                    redirectTo = '/admin-panel'
+                }
+            }
             setTimeout(() => {
-                router.push('/dashboard')
+                router.push(redirectTo)
             }, 2000)
         }
         setLoading(false)

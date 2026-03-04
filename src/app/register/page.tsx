@@ -90,58 +90,54 @@ export default function RegisterPage() {
 
         const studentName = `${formData.studentLastName} ${formData.studentFirstName}`
 
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: formData.email,
-            password: formData.password,
-            options: {
-                data: {
-                    name: studentName,
-                    student_last_name: formData.studentLastName,
-                    student_first_name: formData.studentFirstName,
-                    parent_last_name: formData.parentLastName,
-                    parent_first_name: formData.parentFirstName,
+        try {
+            // サーバー側でservice_roleを使ってユーザー作成（メール確認不要）
+            const res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: formData.email,
+                    password: formData.password,
+                    studentName,
+                    studentLastName: formData.studentLastName,
+                    studentFirstName: formData.studentFirstName,
+                    parentLastName: formData.parentLastName,
+                    parentFirstName: formData.parentFirstName,
                     grade: formData.grade,
-                    cram_school: formData.cramSchool,
-                    cram_school_other: formData.cramSchool === 'その他' ? formData.cramSchoolOther : null,
-                },
-            },
-        })
+                    cramSchool: formData.cramSchool,
+                    cramSchoolOther: formData.cramSchool === 'その他' ? formData.cramSchoolOther : null,
+                }),
+            })
 
-        if (signUpError) {
-            if (signUpError.message.includes('already registered')) {
-                setError('このメールアドレスは既に登録されています')
-            } else if (signUpError.message.includes('security purposes')) {
-                setError('連続リクエストが制限されています。しばらく待ってから再度お試しください。')
-            } else {
-                setError(`登録に失敗しました: ${signUpError.message}`)
-            }
-            setLoading(false)
-        } else {
-            // トリガーが対応しない場合に備えて、profilesテーブルを直接更新
-            if (signUpData.user) {
-                await supabase
-                    .from('profiles')
-                    .update({
-                        name: studentName,
-                        student_last_name: formData.studentLastName,
-                        student_first_name: formData.studentFirstName,
-                        parent_last_name: formData.parentLastName,
-                        parent_first_name: formData.parentFirstName,
-                        grade: formData.grade,
-                        cram_school: formData.cramSchool,
-                        cram_school_other: formData.cramSchool === 'その他' ? formData.cramSchoolOther : null,
-                    })
-                    .eq('id', signUpData.user.id)
+            const result = await res.json()
+
+            if (!res.ok) {
+                if (result.error?.includes('already been registered')) {
+                    setError('このメールアドレスは既に登録されています')
+                } else {
+                    setError(`登録に失敗しました: ${result.error}`)
+                }
+                setLoading(false)
+                return
             }
 
-            // セッションがある場合はダッシュボードへ、ない場合はメール確認が必要
-            if (signUpData.session) {
-                router.push('/dashboard')
-                router.refresh()
-            } else {
+            // 登録成功 → そのままログイン
+            const { error: loginError } = await supabase.auth.signInWithPassword({
+                email: formData.email,
+                password: formData.password,
+            })
+
+            if (loginError) {
+                // ログイン失敗してもアカウントは作成済み
                 setSuccess(true)
                 setLoading(false)
+            } else {
+                router.push('/dashboard')
+                router.refresh()
             }
+        } catch {
+            setError('登録中にエラーが発生しました。もう一度お試しください。')
+            setLoading(false)
         }
     }
 
@@ -160,7 +156,7 @@ export default function RegisterPage() {
                     {success && (
                         <div className="p-4 rounded-lg bg-teal-50 border border-teal-200 text-teal-700 text-sm space-y-2">
                             <p className="font-semibold">登録が完了しました！</p>
-                            <p>入力されたメールアドレスに確認メールを送信しました。メール内のリンクをクリックしてから、ログインしてください。</p>
+                            <p>以下のリンクからログインしてください。</p>
                             <Link href="/login" className="inline-block mt-2 text-teal-600 hover:text-teal-500 underline font-medium">
                                 ログインページへ
                             </Link>
