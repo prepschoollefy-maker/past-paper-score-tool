@@ -40,6 +40,7 @@ export default function RegisterPage() {
         cramSchoolOther: '',
     })
     const [error, setError] = useState<string | null>(null)
+    const [success, setSuccess] = useState(false)
     const [loading, setLoading] = useState(false)
     const router = useRouter()
     const supabase = createClient()
@@ -109,6 +110,8 @@ export default function RegisterPage() {
         if (signUpError) {
             if (signUpError.message.includes('already registered')) {
                 setError('このメールアドレスは既に登録されています')
+            } else if (signUpError.message.includes('security purposes')) {
+                setError('連続リクエストが制限されています。しばらく待ってから再度お試しください。')
             } else {
                 setError(`登録に失敗しました: ${signUpError.message}`)
             }
@@ -130,8 +133,15 @@ export default function RegisterPage() {
                     })
                     .eq('id', signUpData.user.id)
             }
-            router.push('/dashboard')
-            router.refresh()
+
+            // セッションがある場合はダッシュボードへ、ない場合はメール確認が必要
+            if (signUpData.session) {
+                router.push('/dashboard')
+                router.refresh()
+            } else {
+                setSuccess(true)
+                setLoading(false)
+            }
         }
     }
 
@@ -147,7 +157,17 @@ export default function RegisterPage() {
                         <p className="text-slate-500 text-sm">過去問得点管理ツールを始めましょう</p>
                     </div>
 
-                    <form onSubmit={handleRegister} className="space-y-5">
+                    {success && (
+                        <div className="p-4 rounded-lg bg-teal-50 border border-teal-200 text-teal-700 text-sm space-y-2">
+                            <p className="font-semibold">登録が完了しました！</p>
+                            <p>入力されたメールアドレスに確認メールを送信しました。メール内のリンクをクリックしてから、ログインしてください。</p>
+                            <Link href="/login" className="inline-block mt-2 text-teal-600 hover:text-teal-500 underline font-medium">
+                                ログインページへ
+                            </Link>
+                        </div>
+                    )}
+
+                    <form onSubmit={handleRegister} className={`space-y-5 ${success ? 'hidden' : ''}`}>
                         {/* メールアドレス */}
                         <div>
                             <label className={labelClass}>

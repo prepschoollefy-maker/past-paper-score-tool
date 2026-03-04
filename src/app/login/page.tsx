@@ -24,7 +24,13 @@ export default function LoginPage() {
         })
 
         if (error) {
-            setError('メールアドレスまたはパスワードが正しくありません')
+            if (error.message.includes('Email not confirmed')) {
+                setError('メールアドレスが確認されていません。確認メールのリンクをクリックしてください。')
+            } else if (error.message.includes('security purposes')) {
+                setError('連続リクエストが制限されています。しばらく待ってから再度お試しください。')
+            } else {
+                setError('メールアドレスまたはパスワードが正しくありません')
+            }
             setLoading(false)
         } else {
             // ロールに応じてリダイレクト先を決定
