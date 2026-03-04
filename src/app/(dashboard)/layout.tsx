@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, Plus, History, LayoutDashboard, Settings, CalendarDays } from 'lucide-react'
+import { LogOut, Plus, History, LayoutDashboard, CalendarDays } from 'lucide-react'
 import { signOut } from '@/app/actions/auth'
 
 export default async function DashboardLayout({
@@ -22,7 +22,11 @@ export default async function DashboardLayout({
         .eq('id', user.id)
         .single()
 
-    const isAdmin = profile?.role === 'admin'
+    // 管理者はユーザー画面にアクセスさせない
+    if (profile?.role === 'admin') {
+        redirect('/admin-panel')
+    }
+
     const displayName = (profile?.student_last_name && profile?.student_first_name)
         ? `${profile.student_last_name} ${profile.student_first_name}`
         : profile?.name || user.email?.split('@')[0] || 'あなた'
@@ -56,12 +60,6 @@ export default async function DashboardLayout({
                                 <CalendarDays className="w-4 h-4" />
                                 受験計画
                             </Link>
-                            {isAdmin && (
-                                <Link href="/admin-panel" className="flex items-center gap-2 text-teal-800 hover:text-teal-400 transition-colors">
-                                    <Settings className="w-4 h-4" />
-                                    管理者パネル
-                                </Link>
-                            )}
                         </nav>
 
                         <div className="flex items-center gap-4">
@@ -115,15 +113,6 @@ export default async function DashboardLayout({
                         <CalendarDays className="w-6 h-6" />
                         <span className="text-xs font-medium">受験計画</span>
                     </Link>
-                    {isAdmin && (
-                        <Link
-                            href="/admin-panel"
-                            className="flex flex-col items-center gap-1 px-4 py-2 text-teal-800 hover:text-teal-400 active:bg-teal-200/30 rounded-lg transition-all"
-                        >
-                            <Settings className="w-6 h-6" />
-                            <span className="text-xs font-medium">管理</span>
-                        </Link>
-                    )}
                 </div>
             </nav>
 

@@ -27,7 +27,22 @@ export default function LoginPage() {
             setError('メールアドレスまたはパスワードが正しくありません')
             setLoading(false)
         } else {
-            router.push('/dashboard')
+            // ロールに応じてリダイレクト先を決定
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single()
+                if (profile?.role === 'admin') {
+                    router.push('/admin-panel')
+                } else {
+                    router.push('/dashboard')
+                }
+            } else {
+                router.push('/dashboard')
+            }
             router.refresh()
         }
     }
