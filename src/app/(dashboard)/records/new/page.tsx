@@ -74,7 +74,7 @@ export default function NewRecordPage() {
                 // 初期値をセット
                 setScores(data.map(s => ({
                     subject: s.subject,
-                    score: 0,
+                    score: '' as unknown as number,
                     max_score: s.max_score,
                 })))
             }
@@ -84,8 +84,7 @@ export default function NewRecordPage() {
 
     const handleScoreChange = (index: number, value: string) => {
         const newScores = [...scores]
-        const numValue = parseInt(value) || 0
-        newScores[index] = { ...newScores[index], score: numValue }
+        newScores[index] = { ...newScores[index], score: value === '' ? ('' as unknown as number) : (parseInt(value) || 0) }
         setScores(newScores)
     }
 
@@ -111,11 +110,11 @@ export default function NewRecordPage() {
 
             if (recordError) throw recordError
 
-            // 科目別得点を作成
+            // 科目別得点を作成（空欄は0として保存）
             const scoreInserts = scores.map(s => ({
                 practice_record_id: record.id,
                 subject: s.subject,
-                score: s.score,
+                score: Number(s.score) || 0,
                 max_score: s.max_score,
             }))
 
@@ -140,7 +139,7 @@ export default function NewRecordPage() {
     }
 
     // 合計点の計算
-    const totalScore = scores.reduce((sum, s) => sum + s.score, 0)
+    const totalScore = scores.reduce((sum, s) => sum + (Number(s.score) || 0), 0)
     const totalMaxScore = scores.reduce((sum, s) => sum + s.max_score, 0)
     const totalRate = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0
 
@@ -232,15 +231,15 @@ export default function NewRecordPage() {
                                             type="number"
                                             min="0"
                                             max={score.max_score}
-                                            value={score.score}
+                                            value={score.score as number | ''}
                                             onChange={(e) => handleScoreChange(index, e.target.value)}
-                                            required
+                                            placeholder="0"
                                             className="w-24 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-center text-lg font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
                                         />
                                         <span className="text-teal-300">/</span>
                                         <span className="text-teal-800 font-medium">{score.max_score}</span>
                                         <span className="ml-auto text-sm text-teal-300">
-                                            {score.max_score > 0 ? Math.round((score.score / score.max_score) * 100) : 0}%
+                                            {score.max_score > 0 ? Math.round(((Number(score.score) || 0) / score.max_score) * 100) : 0}%
                                         </span>
                                     </div>
                                 </div>

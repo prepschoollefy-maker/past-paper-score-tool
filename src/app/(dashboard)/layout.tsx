@@ -63,7 +63,7 @@ export default async function DashboardLayout({
                         </nav>
 
                         <div className="flex items-center gap-4">
-                            <span className="text-sm text-teal-300 hidden sm:block">
+                            <span className="text-sm text-teal-700 hidden sm:block">
                                 {displayName}
                             </span>
                             <form action={signOut}>
@@ -88,7 +88,7 @@ export default async function DashboardLayout({
                         className="flex flex-col items-center gap-1 px-4 py-2 text-teal-800 hover:text-teal-400 active:bg-teal-200/30 rounded-lg transition-all"
                     >
                         <LayoutDashboard className="w-6 h-6" />
-                        <span className="text-xs font-medium">ダッシュボード</span>
+                        <span className="text-xs font-medium">ホーム</span>
                     </Link>
                     <Link
                         href="/records"

@@ -147,7 +147,7 @@ export default function RecordsPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-400"></div>
             </div>
         )
     }
@@ -157,7 +157,7 @@ export default function RecordsPage() {
             <div className="flex items-center justify-end">
                 <Link
                     href="/records/new"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-lg hover:from-teal-500 hover:to-teal-600 shadow-md transition-all"
                 >
                     <Plus className="w-5 h-5" />
                     <span className="hidden sm:inline">新規入力</span>
@@ -165,12 +165,12 @@ export default function RecordsPage() {
             </div>
 
             {records.length === 0 ? (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
-                    <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-500 mb-4">演習記録がまだありません</p>
+                <div className="bg-white rounded-xl shadow-sm border border-teal-200 p-12 text-center">
+                    <FileText className="w-12 h-12 text-teal-300 mx-auto mb-4" />
+                    <p className="text-teal-400 mb-4">演習記録がまだありません</p>
                     <Link
                         href="/records/new"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-lg hover:from-teal-500 hover:to-teal-600 shadow-md transition-all"
                     >
                         <Plus className="w-5 h-5" />
                         最初の記録を入力
@@ -184,7 +184,7 @@ export default function RecordsPage() {
                         return (
                             <div
                                 key={group.school.id}
-                                className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
+                                className="bg-white rounded-xl shadow-sm border border-teal-200 overflow-hidden"
                             >
                                 {/* 学校ヘッダー */}
                                 <button
@@ -196,7 +196,7 @@ export default function RecordsPage() {
                                             <h2 className="text-xl font-bold text-slate-800">
                                                 {group.school.name}
                                             </h2>
-                                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                                            <span className="px-2 py-1 bg-teal-100 text-teal-700 text-xs font-medium rounded-full">
                                                 {group.records.length}件
                                             </span>
                                         </div>
@@ -269,7 +269,7 @@ export default function RecordsPage() {
                                                                 </button>
                                                                 <Link
                                                                     href={`/records/${record.id}/edit`}
-                                                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                                    className="p-2 text-teal-300 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                                                                 >
                                                                     <Edit2 className="w-4 h-4" />
                                                                 </Link>
