@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { PracticeRecord, ExamSession, School, RequiredSubject, ScoreInput } from '@/types/database'
-import { ChevronDown, Save, ArrowLeft } from 'lucide-react'
+import { Save, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { updateRecord } from '@/app/actions/records'
 
 interface RecordWithDetails extends Omit<PracticeRecord, 'practice_scores'> {
     exam_session?: ExamSession & { school?: School }
@@ -41,8 +42,6 @@ export default function EditRecordPage({ params }: { params: Promise<{ id: strin
 
         async function fetchRecord() {
             try {
-                console.log('Fetching record with ID:', recordId)
-
                 const { data, error } = await supabase
                     .from('practice_records')
                     .select(`
@@ -53,11 +52,7 @@ export default function EditRecordPage({ params }: { params: Promise<{ id: strin
                     .eq('id', recordId)
                     .single()
 
-                console.log('Fetched data:', data)
-                console.log('Fetch error:', error)
-
                 if (error) {
-                    console.error('Database error:', error)
                     setError(`記録の読み込みに失敗しました: ${error.message}`)
                     setLoading(false)
                     return
@@ -71,7 +66,6 @@ export default function EditRecordPage({ params }: { params: Promise<{ id: strin
                 }
 
                 const recordData = data as RecordWithDetails
-                console.log('Record data:', recordData)
 
                 setRecord(recordData)
                 setPracticeDate(recordData.practice_date)
@@ -99,8 +93,7 @@ export default function EditRecordPage({ params }: { params: Promise<{ id: strin
                     }))
                 }
             } catch (err) {
-                console.error('Unexpected error:', err)
-                setError(`予期しないエラーが発生しました: ${err}`)
+                setError(err instanceof Error ? err.message : '予期しないエラーが発生しました')
             } finally {
                 setLoading(false)
             }
@@ -128,39 +121,11 @@ export default function EditRecordPage({ params }: { params: Promise<{ id: strin
         }
 
         try {
-            // 演習記録を更新
-            const { error: recordError } = await supabase
-                .from('practice_records')
-                .update({
-                    practice_date: practiceDate,
-                    memo: memo || null,
-                })
-                .eq('id', recordId)
-
-            if (recordError) throw recordError
-
-            // 既存のスコアを削除
-            const { error: deleteError } = await supabase
-                .from('practice_scores')
-                .delete()
-                .eq('practice_record_id', recordId)
-
-            if (deleteError) throw deleteError
-
-            // 新しいスコアを挿入
-            const scoreInserts = scores.map(s => ({
-                practice_record_id: recordId,
-                subject: s.subject,
-                score: s.score,
-                max_score: s.max_score,
-            }))
-
-            const { error: scoresError } = await supabase
-                .from('practice_scores')
-                .insert(scoreInserts)
-
-            if (scoresError) throw scoresError
-
+            const result = await updateRecord(recordId, practiceDate, memo || null, scores)
+            if (result.error) {
+                setError(result.error)
+                return
+            }
             router.push('/records')
             router.refresh()
         } catch (err) {
