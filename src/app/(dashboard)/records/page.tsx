@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import type { PracticeRecord, ExamSession, School } from '@/types/database'
 import { Plus, Edit2, Trash2, Calendar, FileText, ChevronDown, ChevronUp, TrendingUp, Award } from 'lucide-react'
+import { deleteRecord } from '@/app/actions/records'
 
 interface RecordWithDetails extends Omit<PracticeRecord, 'exam_session' | 'practice_scores'> {
     exam_session?: ExamSession & { school?: School }
@@ -57,8 +58,12 @@ export default function RecordsPage() {
 
         setDeleting(id)
         try {
-            await supabase.from('practice_records').delete().eq('id', id)
-            setRecords(records.filter(r => r.id !== id))
+            const result = await deleteRecord(id)
+            if (result.error) {
+                alert(result.error)
+            } else {
+                setRecords(records.filter(r => r.id !== id))
+            }
         } catch (err) {
             console.error(err)
         } finally {

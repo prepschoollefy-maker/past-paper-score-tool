@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import type { School } from '@/types/database'
 import { ChevronDown } from 'lucide-react'
+import SchoolSummaryCards from '@/components/SchoolSummaryCards'
 
 interface ExamSessionWithData {
     id: string
@@ -12,6 +13,8 @@ interface ExamSessionWithData {
     session_label: string
     studentScore: number | null
     studentMaxScore: number | null
+    studentBestScore: number | null
+    attemptCount: number
     subjectScores: { subject: string; score: number; max_score: number }[]
     passingMin: number | null
     passingMin2: number | null
@@ -96,10 +99,10 @@ export default function DashboardPage() {
         async function fetchExamData() {
             setLoading(true)
 
-            // 試験回を取得
+            // 試験回・公式データを1クエリでJOIN取得
             let query = supabase
                 .from('exam_sessions')
-                .select('id, year, session_label, required_subjects(*)')
+                .select('id, year, session_label, required_subjects(*), official_data(*)')
                 .eq('school_id', selectedSchoolId)
                 .order('year', { ascending: true })
 
@@ -123,18 +126,29 @@ export default function DashboardPage() {
             })
             setAvailableSubjects(Array.from(subjects))
 
-            // 各試験回のデータを取得
-            const examDataList: ExamSessionWithData[] = []
+            // 演習記録を1クエリで一括取得（全セッション分）
+            const sessionIds = sessions.map(s => s.id)
+            const { data: allRecords } = await supabase
+                .from('practice_records')
+                .select('*, practice_scores(*)')
+                .in('exam_session_id', sessionIds)
 
-            for (const session of sessions) {
-                // 公式データを全科目取得
-                const { data: officialDataList } = await supabase
-                    .from('official_data')
-                    .select('*')
-                    .eq('exam_session_id', session.id)
+            // session_idでインデックス化
+            const recordsBySession: Record<string, typeof allRecords> = {}
+            if (allRecords) {
+                for (const record of allRecords) {
+                    if (!recordsBySession[record.exam_session_id]) {
+                        recordsBySession[record.exam_session_id] = []
+                    }
+                    recordsBySession[record.exam_session_id]!.push(record)
+                }
+            }
 
-                const totalOfficial = officialDataList?.find(d => d.subject === '総合')
-                const subjectOfficialData = (officialDataList || [])
+            // 各試験回のデータを組み立て
+            const examDataList: ExamSessionWithData[] = sessions.map(session => {
+                const officialDataList = (session as { official_data?: { subject: string; passing_min: number | null; passing_min_2: number | null; passing_max: number | null; passer_avg: number | null; applicant_avg: number | null }[] }).official_data || []
+                const totalOfficial = officialDataList.find(d => d.subject === '総合')
+                const subjectOfficialData = officialDataList
                     .filter(d => d.subject !== '総合')
                     .map(d => ({
                         subject: d.subject,
@@ -144,34 +158,43 @@ export default function DashboardPage() {
                         passingAvg: d.passer_avg,
                     }))
 
-                // 生徒の演習記録を取得
-                const { data: records } = await supabase
-                    .from('practice_records')
-                    .select('*, practice_scores(*)')
-                    .eq('exam_session_id', session.id)
-
+                const records = recordsBySession[session.id]
                 let studentScore: number | null = null
                 let studentMaxScore: number | null = null
+                let studentBestScore: number | null = null
+                let attemptCount = 0
                 let subjectScores: { subject: string; score: number; max_score: number }[] = []
 
                 if (records && records.length > 0) {
-                    const record = records[0]
-                    const scores = record.practice_scores || []
-                    studentScore = scores.reduce((sum: number, s: { score: number }) => sum + s.score, 0)
-                    studentMaxScore = scores.reduce((sum: number, s: { max_score: number }) => sum + s.max_score, 0)
-                    subjectScores = scores.map((s: { subject: string; score: number; max_score: number }) => ({
+                    attemptCount = records.length
+                    // 最新の記録を使用（practice_dateの降順）
+                    const sorted = [...records].sort((a, b) =>
+                        new Date(b.practice_date).getTime() - new Date(a.practice_date).getTime()
+                    )
+                    const latestRecord = sorted[0]
+                    const latestScores = latestRecord.practice_scores || []
+                    studentScore = latestScores.reduce((sum: number, s: { score: number }) => sum + s.score, 0)
+                    studentMaxScore = latestScores.reduce((sum: number, s: { max_score: number }) => sum + s.max_score, 0)
+                    subjectScores = latestScores.map((s: { subject: string; score: number; max_score: number }) => ({
                         subject: s.subject,
                         score: s.score,
                         max_score: s.max_score,
                     }))
+                    // 最高点を計算
+                    studentBestScore = Math.max(...records.map(r => {
+                        const scores = r.practice_scores || []
+                        return scores.reduce((sum: number, s: { score: number }) => sum + s.score, 0)
+                    }))
                 }
 
-                examDataList.push({
+                return {
                     id: session.id,
                     year: session.year,
                     session_label: session.session_label,
                     studentScore,
                     studentMaxScore,
+                    studentBestScore,
+                    attemptCount,
                     subjectScores,
                     passingMin: totalOfficial?.passing_min || null,
                     passingMin2: totalOfficial?.passing_min_2 || null,
@@ -179,8 +202,8 @@ export default function DashboardPage() {
                     passingAvg: totalOfficial?.passer_avg || null,
                     applicantAvg: totalOfficial?.applicant_avg || null,
                     subjectOfficialData,
-                })
-            }
+                }
+            })
 
             setExamData(examDataList)
             setLoading(false)
@@ -257,6 +280,9 @@ export default function DashboardPage() {
     return (
         <div className="space-y-6">
             <h1 className="text-2xl font-bold text-teal-700">ダッシュボード</h1>
+
+            {/* 志望校サマリー */}
+            <SchoolSummaryCards />
 
             {/* フィルター */}
             <div className="bg-white rounded-xl shadow-md border border-teal-200 p-4">
@@ -492,7 +518,19 @@ export default function DashboardPage() {
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-sm text-teal-700 whitespace-nowrap">
                                                     {score !== null
-                                                        ? <span className="font-bold text-teal-400">{score}点</span>
+                                                        ? <div>
+                                                            <span className="font-bold text-teal-400">{score}点</span>
+                                                            {d.attemptCount > 1 && (
+                                                                <span className="ml-1 text-xs text-teal-300">
+                                                                    ({d.attemptCount}回目)
+                                                                </span>
+                                                            )}
+                                                            {d.studentBestScore !== null && d.studentBestScore > score && (
+                                                                <div className="text-xs text-teal-300">
+                                                                    最高: {d.studentBestScore}点
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                         : <span className="text-teal-300">未実施</span>
                                                     }
                                                 </td>

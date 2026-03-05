@@ -21,8 +21,6 @@ export default function NewRecordPage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [existingRecordId, setExistingRecordId] = useState<string | null>(null)
-    const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
 
     const supabase = createClient()
     const router = useRouter()
@@ -91,7 +89,7 @@ export default function NewRecordPage() {
         setScores(newScores)
     }
 
-    const saveRecord = async (overwriteId: string | null = null) => {
+    const saveRecord = async () => {
         setError(null)
         setSaving(true)
 
@@ -99,29 +97,7 @@ export default function NewRecordPage() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('ログインが必要です')
 
-            // 既存記録のチェック（上書きモードでない場合のみ）
-            if (!overwriteId) {
-                const { data: existingRecords } = await supabase
-                    .from('practice_records')
-                    .select('id')
-                    .eq('user_id', user.id)
-                    .eq('exam_session_id', selectedExamSessionId)
-
-                if (existingRecords && existingRecords.length > 0) {
-                    setExistingRecordId(existingRecords[0].id)
-                    setShowOverwriteConfirm(true)
-                    setSaving(false)
-                    return
-                }
-            }
-
-            // 上書きの場合、既存レコードを削除
-            if (overwriteId) {
-                await supabase.from('practice_scores').delete().eq('practice_record_id', overwriteId)
-                await supabase.from('practice_records').delete().eq('id', overwriteId)
-            }
-
-            // 演習記録を作成
+            // 演習記録を作成（同一試験の複数回演習を許可）
             const { data: record, error: recordError } = await supabase
                 .from('practice_records')
                 .insert({
@@ -149,9 +125,6 @@ export default function NewRecordPage() {
 
             if (scoresError) throw scoresError
 
-            setExistingRecordId(null)
-            setShowOverwriteConfirm(false)
-
             router.push('/records')
             router.refresh()
         } catch (err) {
@@ -163,16 +136,7 @@ export default function NewRecordPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        await saveRecord(null)
-    }
-
-    const handleOverwrite = async () => {
-        await saveRecord(existingRecordId)
-    }
-
-    const handleCancelOverwrite = () => {
-        setShowOverwriteConfirm(false)
-        setExistingRecordId(null)
+        await saveRecord()
     }
 
     // 合計点の計算
@@ -316,31 +280,6 @@ export default function NewRecordPage() {
                     </div>
                 )}
 
-                {/* 上書き確認ダイアログ */}
-                {showOverwriteConfirm && (
-                    <div className="p-4 rounded-lg bg-amber-50 border border-amber-300 space-y-3">
-                        <p className="text-amber-800 font-medium">⚠️ この試験回の記録がすでに存在します</p>
-                        <p className="text-amber-700 text-sm">上書きすると以前の記録は削除されます。上書きしますか？</p>
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={handleOverwrite}
-                                disabled={saving}
-                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-                            >
-                                {saving ? '保存中...' : '上書きする'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCancelOverwrite}
-                                className="px-4 py-2 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium rounded-lg transition-colors"
-                            >
-                                キャンセル
-                            </button>
-                        </div>
-                    </div>
-                )}
-
                 {/* エラー表示 */}
                 {error && (
                     <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
@@ -349,7 +288,7 @@ export default function NewRecordPage() {
                 )}
 
                 {/* 保存ボタン */}
-                {requiredSubjects.length > 0 && !showOverwriteConfirm && (
+                {requiredSubjects.length > 0 && (
                     <button
                         type="submit"
                         disabled={saving}

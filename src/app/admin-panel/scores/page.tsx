@@ -148,9 +148,10 @@ export default function AdminScoreViewerPage() {
         async function fetchExamData() {
             setLoadingScores(true)
 
+            // 試験回・公式データを1クエリでJOIN取得
             let query = supabase
                 .from('exam_sessions')
-                .select('id, year, session_label, required_subjects(*)')
+                .select('id, year, session_label, required_subjects(*), official_data(*)')
                 .eq('school_id', selectedSchoolId)
                 .order('year', { ascending: true })
 
@@ -173,16 +174,28 @@ export default function AdminScoreViewerPage() {
             })
             setAvailableSubjects(Array.from(subjects))
 
-            const examDataList: ExamSessionWithData[] = []
+            // 特定ユーザーの演習記録を1クエリで一括取得
+            const sessionIds = sessions.map(s => s.id)
+            const { data: allRecords } = await supabase
+                .from('practice_records')
+                .select('*, practice_scores(*)')
+                .in('exam_session_id', sessionIds)
+                .eq('user_id', selectedUserId)
 
-            for (const session of sessions) {
-                const { data: officialDataList } = await supabase
-                    .from('official_data')
-                    .select('*')
-                    .eq('exam_session_id', session.id)
+            const recordsBySession: Record<string, typeof allRecords> = {}
+            if (allRecords) {
+                for (const record of allRecords) {
+                    if (!recordsBySession[record.exam_session_id]) {
+                        recordsBySession[record.exam_session_id] = []
+                    }
+                    recordsBySession[record.exam_session_id]!.push(record)
+                }
+            }
 
-                const totalOfficial = officialDataList?.find(d => d.subject === '総合')
-                const subjectOfficialData = (officialDataList || [])
+            const examDataList: ExamSessionWithData[] = sessions.map(session => {
+                const officialDataList = (session as { official_data?: { subject: string; passing_min: number | null; passing_min_2: number | null; passing_max: number | null; passer_avg: number | null; applicant_avg: number | null }[] }).official_data || []
+                const totalOfficial = officialDataList.find(d => d.subject === '総合')
+                const subjectOfficialData = officialDataList
                     .filter(d => d.subject !== '総合')
                     .map(d => ({
                         subject: d.subject,
@@ -192,13 +205,7 @@ export default function AdminScoreViewerPage() {
                         passingAvg: d.passer_avg,
                     }))
 
-                // 特定ユーザーの演習記録を取得
-                const { data: records } = await supabase
-                    .from('practice_records')
-                    .select('*, practice_scores(*)')
-                    .eq('exam_session_id', session.id)
-                    .eq('user_id', selectedUserId)
-
+                const records = recordsBySession[session.id]
                 let studentScore: number | null = null
                 let studentMaxScore: number | null = null
                 let subjectScores: { subject: string; score: number; max_score: number }[] = []
@@ -215,7 +222,7 @@ export default function AdminScoreViewerPage() {
                     }))
                 }
 
-                examDataList.push({
+                return {
                     id: session.id,
                     year: session.year,
                     session_label: session.session_label,
@@ -228,8 +235,8 @@ export default function AdminScoreViewerPage() {
                     passingAvg: totalOfficial?.passer_avg || null,
                     applicantAvg: totalOfficial?.applicant_avg || null,
                     subjectOfficialData,
-                })
-            }
+                }
+            })
 
             setExamData(examDataList)
             setLoadingScores(false)
