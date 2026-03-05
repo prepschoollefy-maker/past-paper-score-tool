@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { ArrowLeft, Users, ChevronDown, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import ScoreChart, { type ChartDataPoint } from '@/components/ScoreChart'
 
 interface UserProfile {
     id: string
@@ -268,44 +268,33 @@ export default function AdminScoreViewerPage() {
         return acc
     }, [] as ExamSessionWithData[])
 
-    const chartData = uniqueExamData.map(d => {
+    const chartData: ChartDataPoint[] = uniqueExamData.map(d => {
         if (selectedSubject === '総合') {
             return {
                 year: `${d.year}年`,
-                得点: d.studentScore,
-                合格最低点: d.passingMin,
-                '合格最低点※': d.passingMin2,
-                合格最高点: d.passingMax,
-                合格者平均: d.passingAvg,
+                score: d.studentScore,
+                passingMin: d.passingMin,
+                passingMin2: d.passingMin2,
+                passingMax: d.passingMax,
+                passingAvg: d.passingAvg,
             }
         } else {
             const subjectScore = d.subjectScores.find(s => s.subject === selectedSubject)
             const subjectOfficial = d.subjectOfficialData.find(s => s.subject === selectedSubject)
             return {
                 year: `${d.year}年`,
-                得点: subjectScore?.score || null,
-                合格最低点: subjectOfficial?.passingMin || null,
-                '合格最低点※': subjectOfficial?.passingMin2 || null,
-                合格最高点: subjectOfficial?.passingMax || null,
-                合格者平均: subjectOfficial?.passingAvg || null,
+                score: subjectScore?.score || null,
+                passingMin: subjectOfficial?.passingMin || null,
+                passingMin2: subjectOfficial?.passingMin2 || null,
+                passingMax: subjectOfficial?.passingMax || null,
+                passingAvg: subjectOfficial?.passingAvg || null,
             }
         }
     })
 
     // 条件付き表示
-    const hasPassingMin2 = chartData.some(d => d['合格最低点※'] != null)
-    const hasPassingMax = chartData.some(d => d.合格最高点 != null)
-
-    const maxScore = Math.max(
-        ...chartData.map(d => Math.max(
-            (d.得点 as number) || 0,
-            (d.合格最低点 as number) || 0,
-            (d['合格最低点※'] as number) || 0,
-            (d.合格最高点 as number) || 0,
-            (d.合格者平均 as number) || 0
-        )),
-        100
-    )
+    const hasPassingMin2 = chartData.some(d => d.passingMin2 != null)
+    const hasPassingMax = chartData.some(d => d.passingMax != null)
 
     if (loading) {
         return (
@@ -485,44 +474,14 @@ export default function AdminScoreViewerPage() {
                     </div>
 
                     {/* グラフ */}
-                    <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
-                        <h2 className="text-lg font-semibold text-white mb-4">
-                            得点推移
-                            {selectedSessionLabel && sessionLabels.length > 1 && (
-                                <span className="text-slate-400 ml-2">（{selectedSessionLabel}）</span>
-                            )}
-                        </h2>
-                        <div className="overflow-x-auto">
-                            <div className="h-80" style={{ minWidth: `${Math.max(chartData.length * 80, 600)}px` }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={chartData} barCategoryGap="20%">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                        <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
-                                        <YAxis
-                                            domain={[0, Math.ceil(maxScore * 1.1 / 10) * 10]}
-                                            stroke="#94a3b8"
-                                            fontSize={12}
-                                        />
-                                        <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: '#1e293b',
-                                                border: '1px solid #334155',
-                                                borderRadius: '8px',
-                                                color: '#f1f5f9',
-                                            }}
-                                            formatter={(value, name) => [value !== null ? `${value}点` : '-', name]}
-                                        />
-                                        <Legend />
-                                        <Bar dataKey="得点" fill="#f97316" radius={[4, 4, 0, 0]} />
-                                        <Line type="monotone" dataKey="合格最低点" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#ef4444', r: 4 }} connectNulls />
-                                        {hasPassingMin2 && <Line type="monotone" dataKey="合格最低点※" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#2563eb', r: 4 }} connectNulls />}
-                                        {hasPassingMax && <Line type="monotone" dataKey="合格最高点" stroke="#16a34a" strokeWidth={2} dot={{ fill: '#16a34a', r: 4 }} connectNulls />}
-                                        <Line type="monotone" dataKey="合格者平均" stroke="#a78bfa" strokeWidth={2} dot={{ fill: '#a78bfa', r: 4 }} connectNulls />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </div>
+                    <ScoreChart
+                        data={chartData}
+                        title="得点推移"
+                        subtitle={selectedSessionLabel && sessionLabels.length > 1 ? selectedSessionLabel : undefined}
+                        theme="dark"
+                        scoreLabel="得点"
+                        barColor="#f97316"
+                    />
 
                     {/* 詳細テーブル */}
                     <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">

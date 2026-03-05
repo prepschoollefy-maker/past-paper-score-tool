@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import type { School } from '@/types/database'
 import { ChevronDown } from 'lucide-react'
 import SchoolSummaryCards from '@/components/SchoolSummaryCards'
+import ScoreChart, { type ChartDataPoint } from '@/components/ScoreChart'
 
 interface ExamSessionWithData {
     id: string
@@ -229,45 +229,33 @@ export default function DashboardPage() {
         return acc
     }, [] as ExamSessionWithData[])
 
-    const chartData = uniqueExamData.map(d => {
+    const chartData: ChartDataPoint[] = uniqueExamData.map(d => {
         if (selectedSubject === '総合') {
             return {
                 year: `${d.year}年`,
-                あなたの得点: d.studentScore,
-                合格最低点: d.passingMin,
-                '合格最低点※': d.passingMin2,
-                合格最高点: d.passingMax,
-                合格者平均: d.passingAvg,
+                score: d.studentScore,
+                passingMin: d.passingMin,
+                passingMin2: d.passingMin2,
+                passingMax: d.passingMax,
+                passingAvg: d.passingAvg,
             }
         } else {
             const subjectScore = d.subjectScores.find(s => s.subject === selectedSubject)
             const subjectOfficial = d.subjectOfficialData.find(s => s.subject === selectedSubject)
             return {
                 year: `${d.year}年`,
-                あなたの得点: subjectScore?.score || null,
-                合格最低点: subjectOfficial?.passingMin || null,
-                '合格最低点※': subjectOfficial?.passingMin2 || null,
-                合格最高点: subjectOfficial?.passingMax || null,
-                合格者平均: subjectOfficial?.passingAvg || null,
+                score: subjectScore?.score || null,
+                passingMin: subjectOfficial?.passingMin || null,
+                passingMin2: subjectOfficial?.passingMin2 || null,
+                passingMax: subjectOfficial?.passingMax || null,
+                passingAvg: subjectOfficial?.passingAvg || null,
             }
         }
     })
 
     // 条件付き列表示: データが1件でもあるか判定
-    const hasPassingMin2 = chartData.some(d => d['合格最低点※'] != null)
-    const hasPassingMax = chartData.some(d => d.合格最高点 != null)
-
-    // 最高点（Y軸の上限用）
-    const maxScore = Math.max(
-        ...chartData.map(d => Math.max(
-            (d.あなたの得点 as number) || 0,
-            (d.合格最低点 as number) || 0,
-            (d['合格最低点※'] as number) || 0,
-            (d.合格最高点 as number) || 0,
-            (d.合格者平均 as number) || 0
-        )),
-        100
-    )
+    const hasPassingMin2 = chartData.some(d => d.passingMin2 != null)
+    const hasPassingMax = chartData.some(d => d.passingMax != null)
 
     if (loading && schools.length === 0) {
         return (
@@ -380,91 +368,11 @@ export default function DashboardPage() {
                     </div>
 
                     {/* グラフ */}
-                    <div className="bg-white rounded-xl shadow-md border border-teal-200 p-6">
-                        <h2 className="text-lg font-semibold text-teal-700 mb-4">
-                            グラフ推移
-                            {selectedSessionLabel && sessionLabels.length > 1 && (
-                                <span className="text-teal-300 ml-2">（{selectedSessionLabel}）</span>
-                            )}
-                        </h2>
-                        <div className="overflow-x-auto">
-                            <div className="h-80" style={{ minWidth: `${Math.max(chartData.length * 80, 600)}px` }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={chartData} barCategoryGap="20%">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
-                                        <YAxis
-                                            domain={[0, Math.ceil(maxScore * 1.1 / 10) * 10]}
-                                            stroke="#94a3b8"
-                                            fontSize={12}
-                                        />
-                                        <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: '#fff',
-                                                border: '1px solid #e2e8f0',
-                                                borderRadius: '8px',
-                                            }}
-                                            formatter={(value, name) => [value !== null ? `${value}点` : '-', name]}
-                                        />
-                                        <Legend />
-
-                                        {/* 生徒の得点（バー） */}
-                                        <Bar
-                                            dataKey="あなたの得点"
-                                            fill="#4DB8C4"
-                                            radius={[4, 4, 0, 0]}
-                                        />
-
-                                        {/* 合格最低点（折れ線） */}
-                                        <Line
-                                            type="monotone"
-                                            dataKey="合格最低点"
-                                            stroke="#ef4444"
-                                            strokeWidth={2}
-                                            strokeDasharray="5 5"
-                                            dot={{ fill: '#ef4444', r: 4 }}
-                                            connectNulls
-                                        />
-
-                                        {/* 合格最低点※（折れ線・データがある場合のみ） */}
-                                        {hasPassingMin2 && (
-                                            <Line
-                                                type="monotone"
-                                                dataKey="合格最低点※"
-                                                stroke="#2563eb"
-                                                strokeWidth={2}
-                                                strokeDasharray="5 5"
-                                                dot={{ fill: '#2563eb', r: 4 }}
-                                                connectNulls
-                                            />
-                                        )}
-
-                                        {/* 合格最高点（折れ線・データがある場合のみ） */}
-                                        {hasPassingMax && (
-                                            <Line
-                                                type="monotone"
-                                                dataKey="合格最高点"
-                                                stroke="#16a34a"
-                                                strokeWidth={2}
-                                                dot={{ fill: '#16a34a', r: 4 }}
-                                                connectNulls
-                                            />
-                                        )}
-
-                                        {/* 合格者平均（折れ線） */}
-                                        <Line
-                                            type="monotone"
-                                            dataKey="合格者平均"
-                                            stroke="#7c3aed"
-                                            strokeWidth={2}
-                                            dot={{ fill: '#7c3aed', r: 4 }}
-                                            connectNulls
-                                        />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </div>
+                    <ScoreChart
+                        data={chartData}
+                        title="グラフ推移"
+                        subtitle={selectedSessionLabel && sessionLabels.length > 1 ? selectedSessionLabel : undefined}
+                    />
 
                     {/* 詳細テーブル */}
                     <div className="bg-white rounded-xl shadow-md border border-teal-200 overflow-hidden">
